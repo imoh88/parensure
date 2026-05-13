@@ -1,0 +1,69 @@
+{
+  "expo": {
+    "name": "parensure",
+    "slug": "parensure",
+    "version": "1.0.1",
+    "orientation": "portrait",
+    "icon": "./assets/images/parensure-logo.png",
+    "scheme": "parensure",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "io.parensure.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "Parensure uses your location to help match you with nearby caregivers.",
+        "NSCameraUsageDescription": "Parensure uses your camera to capture profile photos and documents.",
+        "NSPhotoLibraryUsageDescription": "Parensure accesses your photo library to upload profile photos and documents.",
+        "NSMicrophoneUsageDescription": "Parensure uses the microphone for video features within the app."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/parensure-logo.png",
+        "backgroundColor": "#ffffff"
+      },
+      "googleServicesFile": "./google-services.json",
+      "predictiveBackGestureEnabled": false,
+      "package": "com.parensure",
+      "softwareKeyboardLayoutMode": "pan"
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "color": "#E84545",
+          "sounds": []
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow Parensure to use Face ID for secure sign in."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/parensure-logo.png",
+          "imageWidth": 200,
+          "imageHeight": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
+      "@react-native-community/datetimepicker",
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": false,
+      "reactCompiler": true
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "245523234",
+    "project_id": "parensure-42cfc",
+    "storage_bucket": "parensure-42cfc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:245523234:android:d6654ff7e7ac6ac626fb7b",
+        "android_client_info": {
+          "package_name": "com.parensure"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBFhAyijh0JyNoviuRNenkuOGoPvA0Pw6A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
