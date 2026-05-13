@@ -143,6 +143,23 @@ export const caregiverApi = {
     return response.data;
   },
 
+  updateAppointment: async (appointmentId: string, data: {
+    title?: string;
+    providerName?: string;
+    providerPhone?: string;
+    location?: string;
+    notes?: string;
+    scheduledTimes?: string[];
+    startDate?: string;
+    endDate?: string;
+    reminderMinutes?: number;
+    frequency?: string;
+    priority?: string;
+  }): Promise<ApiResponse<any>> => {
+    const response = await apiClient.patch(`/appointment/${appointmentId}`, data);
+    return response.data;
+  },
+
   getAppointments: async (careReceiverId?: string): Promise<ApiResponse<any[]>> => {
     const response = await apiClient.get('/appointment', { params: careReceiverId ? { careReceiverId } : undefined });
     return response.data;

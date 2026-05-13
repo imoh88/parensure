@@ -12,17 +12,14 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
-  Modal,
   RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
-  TouchableWithoutFeedback,
-  View,
+  View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
@@ -104,6 +101,50 @@ function buildWeek() {
 
 const WEEK = buildWeek();
 
+function getDateForDayIndex(idx: number): Date {
+  const d = new Date();
+  d.setDate(d.getDate() + (idx - TODAY_INDEX));
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function taskMatchesDay(task: any, selected: Date): boolean {
+  const freq: string = task.frequency ?? 'ONE_TIME';
+
+  // Reference start: prefer explicit startDate, fall back to createdAt
+  const rawStart = task.startDate ?? task.createdAt;
+  const start = rawStart ? new Date(rawStart) : null;
+  if (start) start.setHours(0, 0, 0, 0);
+
+  const end = task.endDate ? new Date(task.endDate) : null;
+  if (end) end.setHours(23, 59, 59, 999);
+
+  // Don't show before the task's start date
+  if (start && selected < start) return false;
+  // Don't show after the task's end date
+  if (end && selected > end) return false;
+
+  if (freq === 'DAILY') return true;
+  if (freq === 'WEEKLY') return start ? selected.getDay() === start.getDay() : true;
+  if (freq === 'CUSTOM') return true;
+  // ONE_TIME: only on start date (or today if no start date set)
+  if (start) return selected.getTime() === start.getTime();
+  return true;
+}
+
+function parseScheduledTime(timeStr: string, onDate: Date): Date | null {
+  const match = timeStr.trim().match(/^(\d+):(\d+)\s*(AM|PM)$/i);
+  if (!match) return null;
+  let h = parseInt(match[1]!, 10);
+  const m = parseInt(match[2]!, 10);
+  const period = match[3]!.toUpperCase();
+  if (period === 'PM' && h !== 12) h += 12;
+  if (period === 'AM' && h === 12) h = 0;
+  const d = new Date(onDate);
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
 const TAG_META: Record<string, { color: string; bg: string; border: string }> = {
   MEDICATION: { color: '#10B981', bg: '#ECFDF5', border: '#10B981' },
   CHECK_IN:   { color: '#3B82F6', bg: '#EFF6FF', border: '#3B82F6' },
@@ -163,8 +204,24 @@ export default function CaregiverDashboard() {
     finally { setRefreshing(false); }
   }, [setBookings]);
 
+  const fetchAppointments = useCallback(async (careReceiverId: string) => {
+    setLoadingAppointments(true);
+    try {
+      const res = await caregiverApi.getAppointments(careReceiverId);
+      if (res.success && res.data) setAppointments(res.data);
+      else setAppointments([]);
+    } catch {
+      setAppointments([]);
+    } finally {
+      setLoadingAppointments(false);
+    }
+  }, []);
+
   useFocusEffect(useCallback(() => {
     if (isStale()) fetchBookings();
+
+    const careReceiverId = bookings[selectedIdx]?.careReceiverId;
+    if (careReceiverId) fetchAppointments(careReceiverId);
 
     // Show wellness popup once per session when screen is focused
     if (!wellnessChecked.current) {
@@ -177,7 +234,7 @@ export default function CaregiverDashboard() {
         })
         .catch(() => { /* silent */ });
     }
-  }, [fetchBookings, isStale]));
+  }, [fetchBookings, isStale, fetchAppointments, bookings, selectedIdx]));
 
   const fetchTasks = useCallback(async (careReceiverId: string) => {
     setLoadingTasks(true);
@@ -206,19 +263,6 @@ export default function CaregiverDashboard() {
     if (careReceiverId) fetchTasks(careReceiverId);
     else setTasks([]);
   }, [selectedIdx, bookings, fetchTasks]);
-
-  const fetchAppointments = useCallback(async (careReceiverId: string) => {
-    setLoadingAppointments(true);
-    try {
-      const res = await caregiverApi.getAppointments(careReceiverId);
-      if (res.success && res.data) setAppointments(res.data);
-      else setAppointments([]);
-    } catch {
-      setAppointments([]);
-    } finally {
-      setLoadingAppointments(false);
-    }
-  }, []);
 
   useEffect(() => {
     const careReceiverId = bookings[selectedIdx]?.careReceiverId;
@@ -262,67 +306,7 @@ export default function CaregiverDashboard() {
           <Text style={s.greetingTitle}>Hi {firstName}</Text>
           <Text style={s.greetingSubtitle}>Here's what's happening today</Text>
         </View>
-        <TouchableOpacity
-          style={s.dotsBtn}
-          activeOpacity={0.7}
-          onPress={() => setMenuVisible(true)}
-        >
-          <Ionicons name="ellipsis-horizontal" size={20} color="#FFF" />
-        </TouchableOpacity>
       </View>
-
-      {/* Dropdown menu */}
-      <Modal
-        visible={menuVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setMenuVisible(false)}
-      >
-        <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
-          <View style={s.menuOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={s.menuCard}>
-                <TouchableOpacity
-                  style={s.menuRow}
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    setMenuVisible(false);
-                    router.push('/(app)/profile');
-                  }}
-                >
-                  <View style={[s.menuIconWrap, { backgroundColor: '#FEF2F2' }]}>
-                    <Ionicons name="share-outline" size={18} color="#E53935" />
-                  </View>
-                  <Text style={s.menuLabel}>Sharing Preferences</Text>
-                </TouchableOpacity>
-
-                <View style={s.menuDivider} />
-
-                <TouchableOpacity
-                  style={s.menuRow}
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    setMenuVisible(false);
-                    Alert.alert(
-                      'Delete Profile',
-                      'Are you sure you want to delete your profile? This action cannot be undone.',
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'Delete', style: 'destructive', onPress: () => {} },
-                      ]
-                    );
-                  }}
-                >
-                  <View style={[s.menuIconWrap, { backgroundColor: '#FEF2F2' }]}>
-                    <Ionicons name="trash-outline" size={18} color="#E53935" />
-                  </View>
-                  <Text style={s.menuLabel}>Delete Profile</Text>
-                </TouchableOpacity>
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
     </View>
   );
 
@@ -472,7 +456,7 @@ export default function CaregiverDashboard() {
       contentContainerStyle={s.tabRow}
     >
       {ACTIVITY_TAB_LABELS.map((label, i) => {
-        const badge = i === 0 ? nonMedicationTasks.length : i === 1 ? medicationTasks.length : appointments.length;
+        const badge = i === 0 ? nonMedicationTasks.length : i === 1 ? medicationTasks.length : dayAppointments.length;
         return (
           <TouchableOpacity
             key={i}
@@ -507,8 +491,10 @@ export default function CaregiverDashboard() {
   );
 
   // ─── Task items ────────────────────────────────────────────────────────────
-  const nonMedicationTasks = tasks.filter((t: any) => t.category !== 'MEDICATION');
-  const medicationTasks = tasks.filter((t: any) => t.category === 'MEDICATION');
+  const selectedDate = getDateForDayIndex(activeDay);
+  const dayTasks = tasks.filter((t: any) => taskMatchesDay(t, selectedDate));
+  const nonMedicationTasks = dayTasks.filter((t: any) => t.category !== 'MEDICATION');
+  const medicationTasks = dayTasks.filter((t: any) => t.category === 'MEDICATION');
 
   const renderTaskItems = (items = nonMedicationTasks, emptyLabel = 'No tasks yet.') => {
     if (loadingTasks) return <ActivityIndicator color="#E53935" style={{ marginTop: 20 }} />;
@@ -525,10 +511,24 @@ export default function CaregiverDashboard() {
           const taskId = item._id ?? item.id;
           const done = item.status === 'COMPLETED' || item.completed === true;
           const isMarking = markingId === taskId;
+          const today = new Date(); today.setHours(0, 0, 0, 0);
+          const isFuture = selectedDate > today;
+          const isMissed = (() => {
+            if (done || isFuture) return false;
+            // Past day — any incomplete task is missed
+            if (selectedDate < today) return true;
+            // Today — check if scheduled time passed by > 30 min
+            if (timeLabel) {
+              const scheduled = parseScheduledTime(timeLabel, selectedDate);
+              if (scheduled) return Date.now() > scheduled.getTime() + 30 * 60 * 1000;
+            }
+            return false;
+          })();
+          const cardBg = done ? '#4CAF501A' : isMissed ? '#D92D201A' : '#F5F5F5';
           return (
             <View key={taskId} style={s.taskRow}>
               <TouchableOpacity
-                style={[s.taskCard, { borderLeftColor: meta.border }, done && s.taskCardDone]}
+                style={[s.taskCard, { borderLeftColor: meta.border, backgroundColor: cardBg }]}
                 activeOpacity={0.8}
                 onPress={() => {
                   taskCache.set(item);
@@ -564,15 +564,17 @@ export default function CaregiverDashboard() {
                 </View>
               </TouchableOpacity>
               <TouchableOpacity
-                style={done ? s.taskCheckDone : s.taskCheckbox}
-                onPress={() => { if (!done && !isMarking) handleToggleTask(taskId); }}
-                activeOpacity={0.7}
-                disabled={done}
+                style={done ? s.taskCheckDone : isFuture ? s.taskCheckboxFuture : s.taskCheckbox}
+                onPress={() => { if (!done && !isMarking && !isFuture) handleToggleTask(taskId); }}
+                activeOpacity={isFuture ? 1 : 0.7}
+                disabled={done || isFuture}
               >
                 {isMarking ? (
                   <ActivityIndicator size="small" color="#FFF" />
                 ) : done ? (
                   <Ionicons name="checkmark" size={14} color="#FFF" />
+                ) : isFuture ? (
+                  <Ionicons name="lock-closed-outline" size={12} color="#D1D5DB" />
                 ) : null}
               </TouchableOpacity>
             </View>
@@ -583,18 +585,22 @@ export default function CaregiverDashboard() {
   };
 
   // ─── Appointment items ─────────────────────────────────────────────────────
+  const dayAppointments = appointments.filter((a: any) => taskMatchesDay(a, selectedDate));
+
   const renderAppointmentItems = () => {
     if (loadingAppointments) return <ActivityIndicator color="#E53935" style={{ marginTop: 20 }} />;
-    if (appointments.length === 0) return (
+    if (dayAppointments.length === 0) return (
       <View style={{ alignItems: 'center', paddingVertical: 24 }}>
         <Text style={{ fontSize: 14, fontFamily: F.i.regular, color: '#9CA3AF' }}>No appointments yet.</Text>
       </View>
     );
+    const today = new Date(); today.setHours(0, 0, 0, 0);
     return (
       <View style={s.taskList}>
-        {appointments.map((item: any) => {
+        {dayAppointments.map((item: any) => {
           const apptId = item._id ?? item.id;
           const timeLabel = item.scheduledTimes?.[0] ?? '';
+          const isApptFuture = selectedDate > today;
           return (
             <View key={apptId} style={s.taskRow}>
               <TouchableOpacity
@@ -636,7 +642,11 @@ export default function CaregiverDashboard() {
                   </Text>
                 </View>
               </TouchableOpacity>
-              <View style={s.taskCheckbox} />
+              <View style={isApptFuture ? s.taskCheckboxFuture : s.taskCheckbox}>
+                {isApptFuture && (
+                  <Ionicons name="lock-closed-outline" size={12} color="#D1D5DB" />
+                )}
+              </View>
             </View>
           );
         })}
@@ -690,8 +700,9 @@ export default function CaregiverDashboard() {
         </View>
       ) : (
         <View style={s.activityList}>
-          {activityLog.map((entry: any, idx: number) => {
-            const isLast = idx === activityLog.length - 1;
+          {activityLog.slice(0, 3).map((entry: any, idx: number) => {
+            const displayed = activityLog.slice(0, 3);
+            const isLast = idx === displayed.length - 1;
             const firstName = (entry.actorName as string).split(' ')[0] ?? entry.actorName;
             const initial = firstName.charAt(0).toUpperCase();
             const verb = ACTION_LABEL[entry.action as string] ?? entry.action;
@@ -1095,7 +1106,7 @@ const s = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.04,
     shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2,
   },
-  taskCardDone: { opacity: 0.6 },
+  taskCardDone: {},
   taskCardInner: { flex: 1, padding: 14, gap: 4 },
   taskTop: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
   tagChip: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
@@ -1120,6 +1131,12 @@ const s = StyleSheet.create({
     width: 28, height: 28, borderRadius: 14,
     borderWidth: 2, borderColor: '#E53935',
     alignItems: 'center', justifyContent: 'center',
+  },
+  taskCheckboxFuture: {
+    width: 28, height: 28, borderRadius: 14,
+    borderWidth: 2, borderColor: '#D1D5DB',
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
   },
   taskCheckDone: {
     width: 28, height: 28, borderRadius: 14,

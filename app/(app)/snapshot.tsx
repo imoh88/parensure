@@ -2,6 +2,7 @@ import ScreenWrapper from '@/components/ui/ScreenWrapper';
 import { caregiverApi } from '@/lib/api/caregiver';
 import { F } from '@/lib/fonts';
 import { appointmentCache } from '@/lib/utils/appointmentCache';
+import { taskCache } from '@/lib/utils/taskCache';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowDown2, ArrowLeft, Building, Calendar, Clock, Hospital, Moon, Profile, Sun1, TickCircle } from 'iconsax-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
@@ -265,7 +266,14 @@ export default function SnapshotScreen() {
               const isMarking = markingId === taskId;
               return (
                 <View key={taskId} style={s.taskRow}>
-                  <View style={[s.taskCard, { borderLeftColor: meta.border }]}>
+                  <TouchableOpacity
+                    style={[s.taskCard, { borderLeftColor: meta.border }]}
+                    activeOpacity={0.8}
+                    onPress={() => {
+                      taskCache.set(item);
+                      router.push({ pathname: '/(app)/task-detail', params: { taskId } });
+                    }}
+                  >
                     <View style={[s.statusChip, { backgroundColor: meta.bg }]}>
                       <Text style={[s.statusText, { color: meta.color }]}>{meta.label}</Text>
                     </View>
@@ -282,7 +290,7 @@ export default function SnapshotScreen() {
                         <Text style={s.metaText}>{person}</Text>
                       </View>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                   <TouchableOpacity
                     style={done ? s.taskCheckDone : s.taskCheckbox}
                     onPress={() => { if (!done && !isMarking) handleToggleTask(taskId); }}
@@ -405,8 +413,14 @@ export default function SnapshotScreen() {
       </View>
     );
 
-    const renderApptCard = (item: any, done = false) => {
+    const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0);
+
+    const renderApptCard = (item: any) => {
       const apptId = item._id ?? item.id;
+      const done = item.status === 'COMPLETED';
+      const apptDate = item.startDate ? new Date(item.startDate) : null;
+      if (apptDate) apptDate.setHours(0, 0, 0, 0);
+      const isFuture = apptDate ? apptDate > todayMidnight : false;
       return (
         <View key={apptId} style={s.apptRow}>
           <TouchableOpacity
@@ -428,11 +442,15 @@ export default function SnapshotScreen() {
             </View>
             <View style={s.apptRight}>
               <Text style={s.apptTime}>{item.scheduledTimes?.[0] ?? '09:30 AM'}</Text>
-              <Text style={s.apptDateLabel}>Today</Text>
+              <Text style={s.apptDateLabel}>{isFuture ? 'Upcoming' : 'Today'}</Text>
             </View>
           </TouchableOpacity>
           {done ? (
             <View style={s.checkDone}><TickCircle size={14} color="#E53935" variant="Bold" /></View>
+          ) : isFuture ? (
+            <View style={s.checkboxLocked}>
+              <TickCircle size={14} color="#D1D5DB" variant="Linear" />
+            </View>
           ) : (
             <View style={s.checkbox} />
           )}
@@ -448,7 +466,7 @@ export default function SnapshotScreen() {
             <Text style={s.apptSectionTitle}>{title}</Text>
             <Text style={s.apptSectionRange}>{range}</Text>
           </View>
-          {items.map((it, i) => renderApptCard(it, i === items.length - 1))}
+          {items.map((it) => renderApptCard(it))}
         </View>
       );
     };
@@ -667,6 +685,7 @@ const s = StyleSheet.create({
   apptTime: { fontSize: 13, fontFamily: F.m.semiBold, color: '#111' },
   apptDateLabel: { fontSize: 11, fontFamily: F.i.regular, color: '#9CA3AF' },
   checkbox: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: '#E5E7EB' },
+  checkboxLocked: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: '#E5E7EB', backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
   checkDone: {
     width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: '#FCA5A5',
     alignItems: 'center', justifyContent: 'center', backgroundColor: '#FEF2F2',

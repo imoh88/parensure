@@ -49,6 +49,7 @@ export default function AppLayout() {
       <Stack.Screen name="heart-rate-check" />
       <Stack.Screen name="stability-check" />
       <Stack.Screen name="insights" />
+      <Stack.Screen name="invite-preview" />
       <Stack.Screen name="invite-member" />
       <Stack.Screen name="manage-receiver" />
       <Stack.Screen name="manage-carecircle" />

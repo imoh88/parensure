@@ -1,8 +1,8 @@
 import ScreenWrapper from '@/components/ui/ScreenWrapper';
 import { F } from '@/lib/fonts';
 import { appointmentCache } from '@/lib/utils/appointmentCache';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Building, Calendar, Call, Edit2, Location, Sms, Timer1 } from 'iconsax-react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { ArrowLeft, Building, Calendar, Call, Location, Sms } from 'iconsax-react-native';
 import React, { useCallback } from 'react';
 import {
   BackHandler,
@@ -22,17 +22,15 @@ function formatApptDate(iso?: string) {
 
 export default function AppointmentDetailScreen() {
   const router = useRouter();
-  const { from } = useLocalSearchParams<{ from?: string }>();
   const appt = appointmentCache.get() as any;
 
   useFocusEffect(useCallback(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (from) router.push(from as any);
-      else router.back();
+      router.back();
       return true;
     });
     return () => sub.remove();
-  }, [router, from]));
+  }, [router]));
 
   if (!appt) {
     return (
@@ -44,10 +42,7 @@ export default function AppointmentDetailScreen() {
     );
   }
 
-  const handleBack = () => {
-    if (from) router.push(from as any);
-    else router.back();
-  };
+  const handleBack = () => router.back();
 
   const handleEdit = () => {
     router.push({ pathname: '/(app)/add-appointment', params: { apptId: appt._id ?? appt.id, from: '/(app)/appointment-detail' } });
@@ -62,7 +57,6 @@ export default function AppointmentDetailScreen() {
 
   const isHigh = appt.priority === 'HIGH';
   const timeLabel = appt.scheduledTimes?.[0] ?? '—';
-  const dateLabel = appt.startDate ? formatApptDate(appt.startDate) : '—';
 
   return (
     <ScreenWrapper bg="#FFFFFF" avoidKeyboard={false}>
@@ -102,21 +96,73 @@ export default function AppointmentDetailScreen() {
 
         {/* Edit icon */}
         <TouchableOpacity style={s.editIconBtn} onPress={handleEdit} activeOpacity={0.7}>
-          <Edit2 size={20} color="#E53935" variant="Linear" />
+          <Text style={s.editLink}>Edit</Text>
         </TouchableOpacity>
 
-        {/* Date + Time cards */}
-        <View style={s.infoRow}>
-          <View style={s.infoCard}>
-            <Calendar size={22} color="#E53935" variant="Linear" />
-            <Text style={s.infoCardLabel}>DATE</Text>
-            <Text style={s.infoCardValue}>{dateLabel}</Text>
+        {/* Time & Duration Section */}
+        <View style={s.timeSectionCard}>
+          <Text style={s.timeSectionTitle}>Time & Duration</Text>
+
+          {/* Primary time display */}
+          <View style={s.timeTrigger}>
+            <View style={s.timeTriggerLeft}>
+              <Text style={s.timeTriggerValue}>{timeLabel}</Text>
+              <Text style={s.timeTriggerHint}>Scheduled time</Text>
+            </View>
+            <View style={s.timeTriggerBadge}>
+              <Text style={s.timeTriggerBadgeText}>🕐</Text>
+            </View>
           </View>
-          <View style={s.infoCard}>
-            <Timer1 size={22} color="#E53935" variant="Linear" />
-            <Text style={s.infoCardLabel}>TIME</Text>
-            <Text style={s.infoCardValue}>{timeLabel}</Text>
+
+          {/* All scheduled times as chips */}
+          {appt.scheduledTimes && appt.scheduledTimes.length > 1 && (
+            <View style={s.timeChipsRow}>
+              {appt.scheduledTimes.map((t: string, i: number) => (
+                <View key={i} style={s.timeChip}>
+                  <Text style={s.timeChipText}>{t}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Start / End date row */}
+          <View style={s.datesRow}>
+            <View style={s.dateField}>
+              <Text style={s.dateFieldLabel}>Start Date</Text>
+              <View style={[s.dateInput, appt.startDate && s.dateInputFilled]}>
+                <View style={s.dateInputInner}>
+                  <Calendar size={14} color={appt.startDate ? '#E53935' : '#9CA3AF'} variant="Linear" />
+                  <Text style={[s.dateText, !appt.startDate && s.datePlaceholder]}>
+                    {appt.startDate ? formatApptDate(appt.startDate) : 'Not set'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+            <View style={s.dateField}>
+              <Text style={s.dateFieldLabel}>End Date</Text>
+              <View style={[s.dateInput, appt.endDate && s.dateInputFilled]}>
+                <View style={s.dateInputInner}>
+                  <Calendar size={14} color={appt.endDate ? '#E53935' : '#9CA3AF'} variant="Linear" />
+                  <Text style={[s.dateText, !appt.endDate && s.datePlaceholder]}>
+                    {appt.endDate ? formatApptDate(appt.endDate) : 'Not set'}
+                  </Text>
+                </View>
+              </View>
+            </View>
           </View>
+
+          {/* Frequency */}
+          {appt.frequency && (
+            <View style={s.freqRow}>
+              {(['ONE_TIME', 'DAILY', 'WEEKLY'] as const).map((f) => (
+                <View key={f} style={[s.freqBtn, appt.frequency === f && s.freqBtnActive]}>
+                  <Text style={[s.freqBtnText, appt.frequency === f && s.freqBtnTextActive]}>
+                    {f === 'ONE_TIME' ? 'One-time' : f === 'DAILY' ? 'Daily' : 'Weekly'}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
 
         {/* Location section */}
@@ -158,9 +204,6 @@ export default function AppointmentDetailScreen() {
               <Location size={16} color="#E53935" variant="Bold" />
               <Text style={s.sectionTitle}>Instructions</Text>
             </View>
-            <TouchableOpacity onPress={handleEdit} activeOpacity={0.7}>
-              <Text style={s.editLink}>Edit</Text>
-            </TouchableOpacity>
           </View>
           <View style={s.instructionsBox}>
             <Text style={s.instructionsText}>
@@ -237,12 +280,59 @@ const s = StyleSheet.create({
 
   editIconBtn: { alignSelf: 'flex-end', marginBottom: 12, padding: 4 },
 
-  infoRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
-  infoCard: {
-    flex: 1, backgroundColor: '#F3F4F6', borderRadius: 16, padding: 14, gap: 6,
+  timeSectionCard: {
+    backgroundColor: '#F9FAFB', borderRadius: 16,
+    borderWidth: 1, borderColor: '#E5E7EB',
+    padding: 16, marginBottom: 24, gap: 4,
   },
-  infoCardLabel: { fontSize: 10, fontFamily: F.m.bold, color: '#9CA3AF', letterSpacing: 0.8, marginTop: 4 },
-  infoCardValue: { fontSize: 16, fontFamily: F.m.bold, color: '#111' },
+  timeSectionTitle: { fontSize: 17, fontFamily: F.m.bold, color: '#111', letterSpacing: -0.3, marginBottom: 16 },
+
+  timeTrigger: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#FFF', borderRadius: 14,
+    borderWidth: 1, borderColor: '#E5E7EB',
+    paddingHorizontal: 18, paddingVertical: 16,
+  },
+  timeTriggerLeft: { gap: 2 },
+  timeTriggerValue: { fontSize: 22, fontFamily: F.m.bold, color: '#111', letterSpacing: -0.5 },
+  timeTriggerHint: { fontSize: 11, fontFamily: F.i.regular, color: '#9CA3AF' },
+  timeTriggerBadge: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: '#FEF2F2', alignItems: 'center', justifyContent: 'center',
+  },
+  timeTriggerBadgeText: { fontSize: 22 },
+
+  timeChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  timeChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#FEF2F2', borderRadius: 50,
+    borderWidth: 1, borderColor: '#FCA5A5',
+    paddingHorizontal: 12, paddingVertical: 6,
+  },
+  timeChipText: { fontSize: 12, fontFamily: F.m.semiBold, color: '#E53935' },
+
+  datesRow: { flexDirection: 'row', gap: 12, marginTop: 12, marginBottom: 12 },
+  dateField: { flex: 1 },
+  dateFieldLabel: { fontSize: 12, fontFamily: F.m.semiBold, color: '#6B7280', marginBottom: 6 },
+  dateInput: {
+    backgroundColor: '#FFF', borderRadius: 10,
+    borderWidth: 1, borderColor: '#E5E7EB',
+    paddingHorizontal: 12, paddingVertical: 12,
+  },
+  dateInputFilled: { borderColor: '#E53935', backgroundColor: '#FEF2F2' },
+  dateInputInner: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dateText: { fontSize: 12, fontFamily: F.i.regular, color: '#111', flex: 1 },
+  datePlaceholder: { color: '#C4C4C4' },
+
+  freqRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  freqBtn: {
+    paddingHorizontal: 16, paddingVertical: 9, borderRadius: 50,
+    backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E5E7EB',
+    alignItems: 'center',
+  },
+  freqBtnActive: { backgroundColor: '#E53935', borderColor: '#E53935' },
+  freqBtnText: { fontSize: 12, fontFamily: F.m.semiBold, color: '#6B7280' },
+  freqBtnTextActive: { color: '#FFF' },
 
   section: { marginBottom: 24 },
   sectionTitle: { fontSize: 18, fontFamily: F.m.bold, color: '#111', marginBottom: 14 },

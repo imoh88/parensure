@@ -13,6 +13,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Modal,
   Pressable,
   RefreshControl,
@@ -301,7 +302,7 @@ interface TeamMember {
   caregiver: {
     id: string;
     userId: string;
-    user: { id: string; fullName: string; email?: string; phone?: string; dateOfBirth?: string; gender?: string } | null;
+    user: { id: string; fullName: string; email?: string; phone?: string; dateOfBirth?: string; gender?: string; profileImageKey?: string } | null;
   } | null;
 }
 
@@ -654,91 +655,74 @@ function CaregiverCircle() {
             const sortedTeam = [...team].sort((a, b) => (a.isCurrentUser ? -1 : b.isCurrentUser ? 1 : 0));
             const viewerIsPrimary = sortedTeam.find((m) => m.isCurrentUser)?.isPrimary === true;
 
+            const rawNotes = selectedBooking.careReceiver?.medicalNotes ?? '';
+            const conditions = (rawNotes.split('\n')[0] ?? '')
+              .split(',').map((c: string) => c.trim()).filter((c: string) => c.length > 0);
+
             return (
               <View style={{ paddingBottom: 24 }}>
-                {/* Check-in + status */}
-                <View style={s.checkInBar}>
-                  <View style={s.checkInLeft}>
-                    <Clock size={14} color="#9CA3AF" variant="Linear" />
+
+                {/* ── Big Chat button ── */}
+                <View style={s.chatSection}>
+                  <TouchableOpacity
+                    style={s.chatBigBtn}
+                    onPress={() => openReceiverChat(selectedBooking)}
+                    disabled={openingReceiverChat}
+                    activeOpacity={0.85}
+                  >
+                    {openingReceiverChat ? (
+                      <ActivityIndicator color="#FFF" />
+                    ) : (
+                      <>
+                        <Message size={18} color="#FFF" variant="Linear" />
+                        <Text style={s.chatBigBtnText}>Chat</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                  <View style={s.checkInRow}>
+                    <Clock size={12} color="#9CA3AF" variant="Linear" />
                     <Text style={s.checkInText}>
-                      Last seen: {formatLastSeen(
+                      Last check-in: {formatLastSeen(
                         selectedBooking.careReceiver?.user?.isOnline,
                         selectedBooking.careReceiver?.user?.lastSeen,
                         selectedBooking.careReceiver?.user?.lastLoginAt,
                       )}
                     </Text>
                   </View>
-                  <TouchableOpacity
-                    style={s.receiverMsgBtn}
-                    onPress={() => openReceiverChat(selectedBooking)}
-                    disabled={openingReceiverChat}
-                    activeOpacity={0.8}
-                  >
-                    {openingReceiverChat ? (
-                      <ActivityIndicator size="small" color="#E53935" />
-                    ) : (
-                      <Message size={16} color="#E53935" variant="Linear" />
-                    )}
-                    <Text style={s.receiverMsgBtnText}>Message</Text>
-                  </TouchableOpacity>
                 </View>
 
-                {/* Care Summary */}
-                {(() => {
-                  const rawNotes = selectedBooking.careReceiver?.medicalNotes ?? '';
-                  const conditionsLine = rawNotes.split('\n')[0] ?? '';
-                  const conditions = conditionsLine
-                    .split(',')
-                    .map((c: string) => c.trim())
-                    .filter((c: string) => c.length > 0);
-                  const primaryCondition = conditions[0] ?? null;
-                  const extraCount = conditions.length > 1 ? conditions.length - 1 : 0;
-                  return (
-                    <View style={s.card}>
-                      <Text style={s.cardTitle}>Care Summary</Text>
-                      <View style={s.summaryRow}>
-                        <View style={s.summaryItem}>
-                          <Text style={s.summaryValue}>{team.length}</Text>
-                          <Text style={s.summaryLabel}>Active{'\n'}Caregivers</Text>
-                        </View>
-                        <View style={s.summaryDivider} />
-                        <View style={[s.summaryItem, { flex: 1.4 }]}>
-                          {primaryCondition ? (
-                            <>
-                              <Text style={s.summaryLabel} numberOfLines={2}>{primaryCondition}</Text>
-                              {extraCount > 0 && (
-                                <Text style={s.summaryMeta}>+{extraCount} more</Text>
-                              )}
-                            </>
-                          ) : (
-                            <Text style={[s.summaryLabel, { color: '#C4B5A5' }]}>No conditions{'\n'}recorded</Text>
-                          )}
-                        </View>
-                        <View style={s.summaryDivider} />
-                        <View style={s.summaryItem}>
-                          <Text style={s.summaryLabel}>Next Appt:{'\n'}Tue</Text>
-                        </View>
-                      </View>
+                {/* ── Care Summary ── */}
+                <View style={s.card}>
+                  <Text style={s.cardTitle}>Care Summary</Text>
+                  <View style={s.summaryRow}>
+                    <View style={s.summaryItem}>
+                      <Text style={s.summaryValue}>{team.length}</Text>
+                      <Text style={s.summaryLabel}>Active{'\n'}Caregivers</Text>
                     </View>
-                  );
-                })()}
+                    <View style={s.summaryDivider} />
+                    <View style={s.summaryItem}>
+                      <Text style={s.summaryValue}>{conditions.length}</Text>
+                      <Text style={s.summaryLabel}>Health{'\n'}Conditions</Text>
+                    </View>
+                    <View style={s.summaryDivider} />
+                    <View style={s.summaryItem}>
+                      <Text style={s.summaryValue}>{activityLog.length}</Text>
+                      <Text style={s.summaryLabel}>Current{'\n'}Activities</Text>
+                    </View>
+                  </View>
+                </View>
 
-                {/* Care Circle section */}
+                {/* ── Care Circle ── */}
                 <View style={s.sectionHeader}>
                   <Text style={s.sectionTitle}>Care Circle</Text>
                   <TouchableOpacity
-                    onPress={() =>
-                      router.push({
-                        pathname: '/(app)/manage-carecircle',
-                        params: {
-                          careReceiverId: selectedBooking.careReceiverId,
-                          receiverName,
-                        },
-                      })
-                    }
+                    onPress={() => router.push({
+                      pathname: '/(app)/manage-carecircle',
+                      params: { careReceiverId: selectedBooking.careReceiverId, receiverName },
+                    })}
                     activeOpacity={0.7}
                   >
-                    <Text style={s.manageLink}>Manage</Text>
+                    <Text style={s.addNewLink}>Add New</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -758,38 +742,49 @@ function CaregiverCircle() {
                         const roleLabel = member.isPrimary
                           ? 'Primary Caregiver'
                           : (ROLE_LABELS[member.caregiverRole ?? ''] ?? 'Caregiver');
+                        const mPhoto = member.isCurrentUser
+                          ? (user as any)?.profileImageKey
+                          : member.caregiver?.user?.profileImageKey;
                         return (
-                          <View key={member.bookingId} style={s.memberCard}>
-                            <TouchableOpacity
-                              style={s.memberAvatar}
-                              activeOpacity={member.isCurrentUser ? 1 : 0.8}
-                              onPress={() => {
-                                if (member.isCurrentUser) return;
-                                router.push({
-                                  pathname: '/(app)/caregiver-detail',
-                                  params: {
-                                    caregiverUserId: member.caregiver?.userId ?? '',
-                                    name: mName,
-                                    email: member.caregiver?.user?.email ?? '',
-                                    phone: member.caregiver?.user?.phone ?? '',
-                                    dob: member.caregiver?.user?.dateOfBirth ?? '',
-                                    gender: member.caregiver?.user?.gender ?? '',
-                                    isPrimary: String(member.isPrimary ?? false),
-                                    receiveSosAlerts: String(member.receiveSosAlerts ?? false),
-                                    bookingId: member.bookingId,
-                                    careReceiverId: selectedBooking.careReceiverId,
-                                    viewerIsPrimary: String(viewerIsPrimary),
-                                    from: '/(app)/carecircle',
-                                  },
-                                });
-                              }}
-                            >
-                              <Text style={s.memberInitial}>{mInitial}</Text>
-                            </TouchableOpacity>
+                          <TouchableOpacity
+                            key={member.bookingId}
+                            style={s.memberCard}
+                            activeOpacity={member.isCurrentUser ? 1 : 0.8}
+                            onPress={() => {
+                              if (member.isCurrentUser) return;
+                              router.push({
+                                pathname: '/(app)/caregiver-detail',
+                                params: {
+                                  caregiverUserId: member.caregiver?.userId ?? '',
+                                  name: mName,
+                                  email: member.caregiver?.user?.email ?? '',
+                                  phone: member.caregiver?.user?.phone ?? '',
+                                  dob: member.caregiver?.user?.dateOfBirth ?? '',
+                                  gender: member.caregiver?.user?.gender ?? '',
+                                  isPrimary: String(member.isPrimary ?? false),
+                                  caregiverRole: member.caregiverRole ?? '',
+                                  receiveSosAlerts: String(member.receiveSosAlerts ?? false),
+                                  bookingId: member.bookingId,
+                                  careReceiverId: selectedBooking.careReceiverId,
+                                  viewerIsPrimary: String(viewerIsPrimary),
+                                  from: '/(app)/carecircle',
+                                },
+                              });
+                            }}
+                          >
+                            <View style={s.memberAvatar}>
+                              {mPhoto ? (
+                                <Image source={{ uri: mPhoto }} style={s.memberAvatarImg} />
+                              ) : (
+                                <Text style={s.memberInitial}>{mInitial}</Text>
+                              )}
+                            </View>
                             <View style={s.memberInfo}>
-                              <Text style={s.memberName}>
-                                {mName}{member.isCurrentUser ? ' (You)' : ''}
-                              </Text>
+                              <View style={s.memberNameRow}>
+                                <Text style={s.memberName}>
+                                  {mName}{member.isCurrentUser ? ' (You)' : ''}
+                                </Text>
+                              </View>
                               <Text style={s.memberRole}>{roleLabel}</Text>
                             </View>
                             {!member.isCurrentUser && (
@@ -806,15 +801,14 @@ function CaregiverCircle() {
                                 )}
                               </TouchableOpacity>
                             )}
-                          </View>
+                          </TouchableOpacity>
                         );
                       })
                     )}
                   </View>
                 )}
 
-
-                {/* Account Management — primary caregiver only */}
+                {/* ── Account Management — primary caregiver only ── */}
                 {viewerIsPrimary && (
                   <>
                     <Text style={s.sectionTitle2}>Account Management</Text>
@@ -835,10 +829,10 @@ function CaregiverCircle() {
                       </TouchableOpacity>
 
                       <TouchableOpacity style={s.accountCardRow} activeOpacity={0.7}>
-                        <View style={[s.accountIconWrap]}>
+                        <View style={s.accountIconWrap}>
                           <Trash size={20} color="#E53935" variant="Bold" />
                         </View>
-                        <Text style={[s.accountRowText, { color: '#E53935' }]}>Delete Profile</Text>
+                        <Text style={[s.accountRowTextNeutral, { color: '#E53935' }]}>Delete Profile</Text>
                         <Text style={[s.accountRowChevron, { color: '#E53935' }]}>›</Text>
                       </TouchableOpacity>
                     </View>
@@ -1128,6 +1122,16 @@ const s = StyleSheet.create({
   },
   chatBtnText: { fontSize: 14, fontFamily: F.m.bold, color: '#FFF' },
 
+  chatSection: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, gap: 8 },
+  chatBigBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, backgroundColor: '#E53935', borderRadius: 20, paddingVertical: 14,
+    paddingHorizontal: 64, alignSelf: 'center',
+  },
+  chatBigBtnText: { fontSize: 15, fontFamily: F.m.bold, color: '#FFF' },
+  checkInRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
+  memberNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+
   // ── Story strip ──
   stripRow: { paddingHorizontal: 20, paddingVertical: 20, gap: 20 },
   stripItem: { alignItems: 'center', gap: 4, width: 72 },
@@ -1251,6 +1255,7 @@ const s = StyleSheet.create({
   },
   sectionTitle: { fontSize: 16, fontFamily: F.m.bold, color: '#111', letterSpacing: -0.2 },
   manageLink: { fontSize: 14, fontFamily: F.m.semiBold, color: '#E53935' },
+  addNewLink: { fontSize: 14, fontFamily: F.m.semiBold, color: '#E53935' },
 
   memberList: { paddingHorizontal: 16, gap: 10, marginBottom: 24 },
   memberCard: {
@@ -1268,7 +1273,9 @@ const s = StyleSheet.create({
     backgroundColor: '#E5E7EB',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
+  memberAvatarImg: { width: 48, height: 48, borderRadius: 24 },
   memberInitial: { fontSize: 18, fontFamily: F.m.bold, color: '#6B7280' },
   memberInfo: { flex: 1, gap: 3 },
   memberName: { fontSize: 15, fontFamily: F.m.bold, color: '#111' },

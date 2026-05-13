@@ -160,6 +160,15 @@ export default function RootLayout() {
         } else {
           router.push('/(app)/alerts' as any);
         }
+        return;
+      }
+
+      if (type === 'INVITE') {
+        const inviteId = data['inviteId'];
+        if (inviteId) {
+          router.push({ pathname: '/(app)/invite-preview', params: { inviteId } } as any);
+        }
+        return;
       }
     });
 

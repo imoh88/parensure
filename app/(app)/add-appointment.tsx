@@ -2,8 +2,9 @@ import ScreenWrapper from '@/components/ui/ScreenWrapper';
 import { caregiverApi } from '@/lib/api/caregiver';
 import { F } from '@/lib/fonts';
 import { useAuthStore } from '@/lib/store/authStore';
+import { appointmentCache } from '@/lib/utils/appointmentCache';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Add, ArrowDown2, ArrowLeft, CloseCircle, DocumentText, Location, TickCircle } from 'iconsax-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -178,25 +179,48 @@ const pm = StyleSheet.create({
   optionTextActive: { color: '#E53935', fontFamily: F.m.semiBold },
 });
 
+function parseTimeString(label: string): Date {
+  const d = new Date();
+  const parts = label.trim().split(' ');
+  const period = parts[1] ?? 'AM';
+  const [hStr, mStr] = (parts[0] ?? '8:00').split(':');
+  let h = parseInt(hStr ?? '8', 10);
+  const m = parseInt(mStr ?? '0', 10);
+  if (period === 'PM' && h !== 12) h += 12;
+  if (period === 'AM' && h === 12) h = 0;
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function AddAppointmentScreen() {
   const router = useRouter();
+  const { apptId } = useLocalSearchParams<{ apptId?: string }>();
+  const isEditing = !!apptId;
   const { activeRole } = useAuthStore();
   const isCareReceiver = activeRole === 'CARE_RECEIVER';
 
-  const [title, setTitle] = useState('');
-  const [providerName, setProviderName] = useState('');
-  const [providerPhone, setProviderPhone] = useState('');
-  const [location, setLocation] = useState('');
-  const [notes, setNotes] = useState('');
+  const existing = isEditing ? (appointmentCache.get() as any) : null;
 
-  const [frequency, setFrequency] = useState<Frequency>('ONE_TIME');
-  const [priority, setPriority] = useState<Priority>('NORMAL');
-  const [reminder, setReminder] = useState(30);
+  const [title, setTitle] = useState(existing?.title ?? '');
+  const [providerName, setProviderName] = useState(existing?.providerName ?? '');
+  const [providerPhone, setProviderPhone] = useState(existing?.providerPhone ?? '');
+  const [location, setLocation] = useState(existing?.location ?? '');
+  const [notes, setNotes] = useState(existing?.notes ?? '');
 
-  const [scheduledTimes, setScheduledTimes] = useState<ScheduledTime[]>([]);
-  const [startDate, setStartDate] = useState<Date | null>(null);
-  const [endDate, setEndDate] = useState<Date | null>(null);
+  const [frequency, setFrequency] = useState<Frequency>((existing?.frequency as Frequency) ?? 'ONE_TIME');
+  const [priority, setPriority] = useState<Priority>((existing?.priority as Priority) ?? 'NORMAL');
+  const [reminder, setReminder] = useState<number>(existing?.reminderMinutes ?? 30);
+
+  const [scheduledTimes, setScheduledTimes] = useState<ScheduledTime[]>(
+    existing?.scheduledTimes?.map((t: string) => ({ date: parseTimeString(t) })) ?? []
+  );
+  const [startDate, setStartDate] = useState<Date | null>(
+    existing?.startDate ? new Date(existing.startDate) : null
+  );
+  const [endDate, setEndDate] = useState<Date | null>(
+    existing?.endDate ? new Date(existing.endDate) : null
+  );
 
   const defaultTime = new Date();
   defaultTime.setHours(8, 0, 0, 0);
@@ -206,7 +230,7 @@ export default function AddAppointmentScreen() {
   const [showEndDate, setShowEndDate] = useState(false);
 
   const [receivers, setReceivers] = useState<Receiver[]>([]);
-  const [selectedReceiverId, setSelectedReceiverId] = useState('');
+  const [selectedReceiverId, setSelectedReceiverId] = useState(existing?.careReceiverId ?? '');
   const [loadingReceivers, setLoadingReceivers] = useState(true);
   const [showReceiverPicker, setShowReceiverPicker] = useState(false);
 
@@ -256,8 +280,7 @@ export default function AddAppointmentScreen() {
     setSaving(true);
     try {
       const timeLabels = scheduledTimes.map((t) => formatTimeLabel(t.date));
-      const res = await caregiverApi.createAppointment({
-        careReceiverId: selectedReceiverId,
+      const payload = {
         title: title.trim(),
         providerName: providerName.trim() || undefined,
         providerPhone: providerPhone.trim() || undefined,
@@ -269,14 +292,19 @@ export default function AddAppointmentScreen() {
         reminderMinutes: reminder,
         frequency,
         priority,
-      });
+      };
+
+      const res = isEditing
+        ? await caregiverApi.updateAppointment(apptId!, payload)
+        : await caregiverApi.createAppointment({ careReceiverId: selectedReceiverId, ...payload });
+
       if (res.success) {
-        router.replace('/(app)');
+        router.back();
       } else {
-        Alert.alert('Error', 'Failed to create appointment. Please try again.');
+        Alert.alert('Error', `Failed to ${isEditing ? 'update' : 'create'} appointment. Please try again.`);
       }
     } catch {
-      Alert.alert('Error', 'Failed to create appointment. Please try again.');
+      Alert.alert('Error', `Failed to ${isEditing ? 'update' : 'create'} appointment. Please try again.`);
     } finally {
       setSaving(false);
     }
@@ -289,7 +317,7 @@ export default function AddAppointmentScreen() {
         <TouchableOpacity style={s.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
           <ArrowLeft size={22} color="#E53935" variant="Linear" />
         </TouchableOpacity>
-        <Text style={s.headerTitle}>Add Appointment</Text>
+        <Text style={s.headerTitle}>{isEditing ? 'Edit Appointment' : 'Add Appointment'}</Text>
         <View style={s.backBtn} />
       </View>
 
@@ -300,8 +328,8 @@ export default function AddAppointmentScreen() {
       >
         {/* Title block */}
         <View style={s.titleBlock}>
-          <Text style={s.pageTitle}>Add New Appointment</Text>
-          <Text style={s.pageSub}>Schedule care and support for your loved one.</Text>
+          <Text style={s.pageTitle}>{isEditing ? 'Edit Appointment' : 'Add New Appointment'}</Text>
+          <Text style={s.pageSub}>{isEditing ? 'Update the details below and save.' : 'Schedule care and support for your loved one.'}</Text>
         </View>
 
         {/* Appointment Title */}
@@ -533,7 +561,7 @@ export default function AddAppointmentScreen() {
           disabled={saving}
           activeOpacity={0.85}
         >
-          {saving ? <ActivityIndicator color="#FFF" /> : <Text style={s.saveBtnText}>Save Appointment</Text>}
+          {saving ? <ActivityIndicator color="#FFF" /> : <Text style={s.saveBtnText}>{isEditing ? 'Update Appointment' : 'Save Appointment'}</Text>}
         </TouchableOpacity>
 
         <TouchableOpacity style={s.cancelBtn} onPress={() => router.back()} activeOpacity={0.7}>

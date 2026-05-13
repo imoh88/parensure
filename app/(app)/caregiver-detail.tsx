@@ -5,16 +5,17 @@ import { F } from '@/lib/fonts';
 import { useCareCircleStore } from '@/lib/store/careCircleStore';
 import { useCaregiverDashboardStore } from '@/lib/store/caregiverDashboardStore';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArchiveAdd, ArrowLeft, Calendar, Call, Location, Message, Notification, Profile, Sms, Trash } from 'iconsax-react-native';
-import React, { useState } from 'react';
+import { ArrowLeft, Calendar, Call, DocumentDownload, Location, Message, Notification, Profile, Sms, Trash } from 'iconsax-react-native';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Image,
   Modal,
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TouchableOpacity,
   View,
@@ -39,6 +40,8 @@ export default function CaregiverDetailScreen() {
     gender?: string;
     address?: string;
     certifications?: string;
+    profileImageKey?: string;
+    caregiverRole?: string;
     isPrimary?: string;
     isOnline?: string;
     bookingId?: string;
@@ -56,6 +59,8 @@ export default function CaregiverDetailScreen() {
     gender,
     address,
     certifications,
+    profileImageKey,
+    caregiverRole,
     isPrimary,
     isOnline,
     bookingId,
@@ -84,7 +89,7 @@ export default function CaregiverDetailScreen() {
   const canManage = viewerIsPrimary === 'true';
   const currentRoleLabel = primary
     ? 'Primary Caregiver'
-    : (ROLES.find((r) => r.value === params.caregiverUserId)?.label ?? 'Caregiver');
+    : (ROLES.find((r) => r.value === caregiverRole)?.label ?? 'Caregiver');
 
   const handleToggleSos = async (enabled: boolean) => {
     if (!careReceiverId || !bookingId) return;
@@ -198,18 +203,25 @@ export default function CaregiverDetailScreen() {
         {/* Profile Hero */}
         <View style={s.heroSection}>
           <View style={s.avatarWrap}>
-            <View style={s.avatarCircle}>
-              <Text style={s.avatarInitial}>{initial}</Text>
-            </View>
+            {profileImageKey ? (
+              <Image source={{ uri: profileImageKey }} style={s.avatarCircle} />
+            ) : (
+              <View style={s.avatarCircle}>
+                <Text style={s.avatarInitial}>{initial}</Text>
+              </View>
+            )}
             <View style={[s.onlineDot, online ? s.onlineDotGreen : s.onlineDotGray]} />
           </View>
-          <Text style={s.heroName}>{name}</Text>
-          {primary && <Text style={s.heroPrimary}>(Primary Caregiver)</Text>}
-          <View style={[s.availBadge, online ? s.availBadgeGreen : s.availBadgeGray]}>
-            <Text style={[s.availText, online ? s.availTextGreen : s.availTextGray]}>
-              {online ? 'Available' : 'Offline'}
-            </Text>
+          <View style={s.heroNameRow}>
+            <Text style={s.heroName}>{name}</Text>
+            <View style={[s.availBadge, online ? s.availBadgeGreen : s.availBadgeGray]}>
+              <Text style={[s.availText, online ? s.availTextGreen : s.availTextGray]}>
+                {online ? 'Available' : 'Offline'}
+              </Text>
+            </View>
           </View>
+          <Text style={s.heroRole}>{currentRoleLabel}</Text>
+          {primary && <Text style={s.heroPrimary}>(Primary Caregiver)</Text>}
           <TouchableOpacity
             style={s.chatBtn}
             onPress={openChat}
@@ -253,7 +265,11 @@ export default function CaregiverDetailScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={s.certName} numberOfLines={1}>{certifications}</Text>
+                <Text style={s.certSize}>Document</Text>
               </View>
+              <TouchableOpacity activeOpacity={0.7} style={s.certDownload}>
+                <DocumentDownload size={20} color="#6B7280" variant="Linear" />
+              </TouchableOpacity>
             </View>
           </View>
         ) : null}
@@ -296,11 +312,11 @@ export default function CaregiverDetailScreen() {
               <Text style={s.accountRowText}>Change Role</Text>
               <Text style={s.accountRowChevron}>›</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={s.accountRow} activeOpacity={0.7}>
+            <TouchableOpacity style={s.accountRow} activeOpacity={0.7} onPress={handleDeleteProfile} disabled={deleting}>
               <View style={[s.accountIconWrap, s.accountIconRed]}>
-                <ArchiveAdd size={18} color="#E53935" variant="Bold" />
+                {deleting ? <ActivityIndicator size="small" color="#E53935" /> : <Trash size={18} color="#E53935" variant="Bold" />}
               </View>
-              <Text style={[s.accountRowText, { color: '#E53935' }]}>Archive Profile</Text>
+              <Text style={[s.accountRowText, { color: '#E53935' }]}>Delete Profile</Text>
               <Text style={[s.accountRowChevron, { color: '#E53935' }]}>›</Text>
             </TouchableOpacity>
             <TouchableOpacity style={s.accountRow} activeOpacity={0.7} onPress={handleDeleteProfile} disabled={deleting}>
@@ -402,6 +418,32 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
   );
 }
 
+function CustomToggle({ value, onChange, disabled }: { value: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.timing(anim, { toValue: value ? 1 : 0, duration: 180, useNativeDriver: false }).start();
+  }, [value]);
+  const translateX = anim.interpolate({ inputRange: [0, 1], outputRange: [2, 22] });
+  const trackBg = anim.interpolate({ inputRange: [0, 1], outputRange: ['#E5E7EB', '#E53935'] });
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      disabled={disabled}
+      onPress={() => onChange(!value)}
+      style={{ opacity: disabled ? 0.5 : 1 }}
+    >
+      <Animated.View style={[tog.track, { backgroundColor: trackBg }]}>
+        <Animated.View style={[tog.thumb, { transform: [{ translateX }] }]} />
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
+
+const tog = StyleSheet.create({
+  track: { width: 48, height: 28, borderRadius: 14, justifyContent: 'center' },
+  thumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#FFF', shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+});
+
 function PermRow({ icon, title, subtitle, value, onChange, disabled }: {
   icon: string; title: string; subtitle: string; value: boolean; onChange: (v: boolean) => void; disabled?: boolean;
 }) {
@@ -414,7 +456,7 @@ function PermRow({ icon, title, subtitle, value, onChange, disabled }: {
         <Text style={s.permTitle}>{title}</Text>
         <Text style={s.permSubtitle}>{subtitle}</Text>
       </View>
-      <Switch value={value} onValueChange={onChange} disabled={disabled} trackColor={{ false: '#E5E7EB', true: '#E53935' }} thumbColor="#FFF" />
+      <CustomToggle value={value} onChange={onChange} disabled={disabled} />
     </View>
   );
 }
@@ -429,26 +471,33 @@ const s = StyleSheet.create({
 
   scroll: { paddingBottom: 24 },
 
-  heroSection: { backgroundColor: '#FFF', alignItems: 'center', paddingVertical: 24, paddingHorizontal: 16, marginBottom: 12 },
-  avatarWrap: { position: 'relative', marginBottom: 12 },
+  heroSection: { backgroundColor: '#FFF', alignItems: 'center', paddingVertical: 24, paddingHorizontal: 20, marginBottom: 12 },
+  avatarWrap: { position: 'relative', marginBottom: 14 },
   avatarCircle: {
-    width: 88, height: 88, borderRadius: 44, backgroundColor: '#E5E7EB',
+    width: 96, height: 96, borderRadius: 48, backgroundColor: '#E5E7EB',
     alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#FEE2E2',
+    overflow: 'hidden',
   },
-  avatarInitial: { fontSize: 34, fontFamily: F.m.bold, color: '#6B7280' },
+  avatarInitial: { fontSize: 36, fontFamily: F.m.bold, color: '#6B7280' },
   onlineDot: { position: 'absolute', bottom: 4, right: 4, width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: '#FFF' },
   onlineDotGreen: { backgroundColor: '#10B981' },
   onlineDotGray: { backgroundColor: '#D1D5DB' },
-  heroName: { fontSize: 20, fontFamily: F.m.bold, color: '#111', marginBottom: 2 },
-  heroPrimary: { fontSize: 13, fontFamily: F.i.regular, color: '#E53935', marginBottom: 8 },
-  availBadge: { paddingHorizontal: 14, paddingVertical: 4, borderRadius: 20, borderWidth: 1, marginBottom: 16 },
+  heroNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  heroName: { fontSize: 20, fontFamily: F.m.bold, color: '#111' },
+  heroRole: { fontSize: 13, fontFamily: F.i.regular, color: '#6B7280', marginBottom: 15 },
+  heroPrimary: { fontSize: 13, fontFamily: F.i.regular, color: '#E53935', marginBottom: 16 },
+  availBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20, borderWidth: 1 },
   availBadgeGreen: { backgroundColor: '#ECFDF5', borderColor: '#10B981' },
   availBadgeGray: { backgroundColor: '#F3F4F6', borderColor: '#D1D5DB' },
-  availText: { fontSize: 12, fontFamily: F.m.semiBold },
+  availText: { fontSize: 11, fontFamily: F.m.semiBold },
   availTextGreen: { color: '#10B981' },
   availTextGray: { color: '#6B7280' },
-  chatBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#E53935', paddingHorizontal: 28, paddingVertical: 12, borderRadius: 50 },
-  chatBtnText: { fontSize: 14, fontFamily: F.m.semiBold, color: '#FFF' },
+  chatBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, backgroundColor: '#E53935', borderRadius: 50,
+    paddingVertical: 14, alignSelf: 'stretch',
+  },
+  chatBtnText: { fontSize: 15, fontFamily: F.m.bold, color: '#FFF' },
 
   card: { backgroundColor: '#FFF', borderRadius: 16, marginHorizontal: 16, marginBottom: 12, paddingVertical: 16, paddingHorizontal: 16 },
   cardTitle: { fontSize: 16, fontFamily: F.m.bold, color: '#111', marginBottom: 12 },
@@ -461,6 +510,8 @@ const s = StyleSheet.create({
   certRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   certIcon: { width: 44, height: 44, borderRadius: 10, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
   certName: { fontSize: 14, fontFamily: F.m.semiBold, color: '#111' },
+  certSize: { fontSize: 12, fontFamily: F.i.regular, color: '#9CA3AF', marginTop: 2 },
+  certDownload: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
 
   sectionLabel: { fontSize: 16, fontFamily: F.m.bold, color: '#111', marginHorizontal: 16, marginBottom: 8, marginTop: 4 },
 
