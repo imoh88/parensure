@@ -2,7 +2,7 @@
   "expo": {
     "name": "parensure",
     "slug": "parensure",
-    "version": "1.0.1",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/parensure-logo.png",
     "scheme": "parensure",
