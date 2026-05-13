@@ -604,8 +604,9 @@ export default function CaregiverDashboard() {
           return (
             <View key={apptId} style={s.taskRow}>
               <TouchableOpacity
-                style={[s.taskCard, { borderLeftColor: '#3B82F6' }]}
-                activeOpacity={0.8}
+                style={[s.taskCard, { borderLeftColor: '#3B82F6' }, isApptFuture && s.taskCardLocked]}
+                activeOpacity={isApptFuture ? 1 : 0.8}
+                disabled={isApptFuture}
                 onPress={() => {
                   appointmentCache.set(item);
                   router.push({ pathname: '/(app)/appointment-detail', params: { from: '/(app)/index' } });
@@ -1106,6 +1107,7 @@ const s = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.04,
     shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2,
   },
+  taskCardLocked: { opacity: 0.55 },
   taskCardDone: {},
   taskCardInner: { flex: 1, padding: 14, gap: 4 },
   taskTop: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
