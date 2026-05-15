@@ -61,6 +61,19 @@ function formatTimeLabel(d: Date) {
   return `${h}:${String(m).padStart(2, '0')} ${period}`;
 }
 
+function parseTimeLabel(label: string): Date {
+  const d = new Date();
+  const upper = label.trim().toUpperCase();
+  const [timePart = '', period = 'AM'] = upper.split(' ');
+  const [hStr = '0', mStr = '0'] = timePart.split(':');
+  let h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  if (period === 'PM' && h !== 12) h += 12;
+  if (period === 'AM' && h === 12) h = 0;
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
 // ─── Days ─────────────────────────────────────────────────────────────────────
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
 type Day = (typeof DAYS)[number];
@@ -347,12 +360,14 @@ export default function AddTaskScreen() {
   const [currentTime, setCurrentTime] = useState<Date>(defaultTime);
   const [showTimePicker, setShowTimePicker] = useState(false);
 
-  const [scheduledTimes, setScheduledTimes] = useState<ScheduledTime[]>([]);
-  const [subtasks, setSubtasks] = useState<string[]>([]);
+  const [scheduledTimes, setScheduledTimes] = useState<ScheduledTime[]>(() =>
+    (editTask?.scheduledTimes as string[] | undefined ?? []).map((t) => ({ date: parseTimeLabel(t) }))
+  );
+  const [subtasks, setSubtasks] = useState<string[]>(editTask?.subtasks ?? []);
   const [subtaskInput, setSubtaskInput] = useState('');
 
-  const [startDate, setStartDate] = useState<Date | null>(null);
-  const [endDate, setEndDate] = useState<Date | null>(null);
+  const [startDate, setStartDate] = useState<Date | null>(editTask?.startDate ? new Date(editTask.startDate) : null);
+  const [endDate, setEndDate] = useState<Date | null>(editTask?.endDate ? new Date(editTask.endDate) : null);
   const [showStartDate, setShowStartDate] = useState(false);
   const [showEndDate, setShowEndDate] = useState(false);
 
@@ -461,8 +476,27 @@ export default function AddTaskScreen() {
 
   useEffect(() => { loadReceivers(); }, [loadReceivers]);
 
+  // Minimum selectable time — now() when start date is today or in the past (includes edit mode)
+  const timePickerMinimum = (() => {
+    const now = new Date();
+    const todayMidnight = new Date(now); todayMidnight.setHours(0, 0, 0, 0);
+    const effectiveStartDay = startDate ? new Date(startDate) : todayMidnight;
+    effectiveStartDay.setHours(0, 0, 0, 0);
+    return effectiveStartDay <= todayMidnight ? now : undefined;
+  })();
+
   const addTime = () => {
     const label = formatTimeLabel(currentTime);
+
+    if (timePickerMinimum) {
+      const picked = new Date();
+      picked.setHours(currentTime.getHours(), currentTime.getMinutes(), 0, 0);
+      if (picked <= timePickerMinimum) {
+        Alert.alert('Invalid Time', 'This time has already passed. Please choose a future time.');
+        return;
+      }
+    }
+
     if (!scheduledTimes.find((t) => formatTimeLabel(t.date) === label)) {
       setScheduledTimes((prev) => [...prev, { date: new Date(currentTime) }]);
     }
@@ -470,6 +504,16 @@ export default function AddTaskScreen() {
 
   const removeTime = (i: number) =>
     setScheduledTimes((prev) => prev.filter((_, idx) => idx !== i));
+
+  const isTimePast = (t: ScheduledTime): boolean => {
+    const now = new Date();
+    const todayMidnight = new Date(now); todayMidnight.setHours(0, 0, 0, 0);
+    const effectiveStartDay = startDate ? new Date(startDate) : todayMidnight;
+    effectiveStartDay.setHours(0, 0, 0, 0);
+    if (effectiveStartDay > todayMidnight) return false; // future start date — nothing is past yet
+    const picked = new Date(); picked.setHours(t.date.getHours(), t.date.getMinutes(), 0, 0);
+    return picked <= now;
+  };
 
   const addSubtask = () => {
     const trimmed = subtaskInput.trim();
@@ -531,7 +575,7 @@ export default function AddTaskScreen() {
     <ScreenWrapper bg="#FFFFFF">
       {/* Header */}
       <View style={s.header}>
-        <TouchableOpacity style={s.backBtn} onPress={() => params.from ? router.push(params.from as any) : router.back()} activeOpacity={0.7}>
+        <TouchableOpacity style={s.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
           <ArrowLeft size={22} color="#E53935" variant="Linear" />
         </TouchableOpacity>
         <Text style={s.headerTitle}>{isEditMode ? 'Edit Task' : 'Add Task'}</Text>
@@ -635,14 +679,21 @@ export default function AddTaskScreen() {
           {/* Added time chips */}
           {scheduledTimes.length > 0 && (
             <View style={s.timeChipsRow}>
-              {scheduledTimes.map((t, i) => (
-                <View key={i} style={s.timeChip}>
-                  <Text style={s.timeChipText}>{formatTimeLabel(t.date)}</Text>
-                  <TouchableOpacity onPress={() => removeTime(i)} hitSlop={8}>
-                    <CloseCircle size={14} color="#E53935" variant="Linear" />
-                  </TouchableOpacity>
-                </View>
-              ))}
+              {scheduledTimes.map((t, i) => {
+                const past = isTimePast(t);
+                return (
+                  <View key={i} style={[s.timeChip, past && s.timeChipPast]}>
+                    <Text style={[s.timeChipText, past && s.timeChipTextPast]}>{formatTimeLabel(t.date)}</Text>
+                    {past ? (
+                      <Text style={s.timeChipPassedLabel}>passed</Text>
+                    ) : (
+                      <TouchableOpacity onPress={() => removeTime(i)} hitSlop={8}>
+                        <CloseCircle size={14} color="#E53935" variant="Linear" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
+              })}
             </View>
           )}
 
@@ -694,6 +745,29 @@ export default function AddTaskScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+
+            {/* Custom schedule summary */}
+            {frequency === 'CUSTOM' && DAYS.some((d) => customSchedule[d].start) && (
+              <View style={s.customSummary}>
+                {DAYS.filter((d) => customSchedule[d].start).map((d) => (
+                  <TouchableOpacity
+                    key={d}
+                    style={s.customSummaryRow}
+                    onPress={() => setShowCustomSchedule(true)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={s.customSummaryDay}>{d.slice(0, 3)}</Text>
+                    <Text style={s.customSummaryTime}>
+                      {formatTimeLabel(customSchedule[d].start!)}
+                      {customSchedule[d].end ? ` – ${formatTimeLabel(customSchedule[d].end!)}` : ''}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity onPress={() => setShowCustomSchedule(true)} activeOpacity={0.7}>
+                  <Text style={s.customSummaryEdit}>Edit schedule</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
 
           {/* Priority */}
@@ -801,6 +875,7 @@ export default function AddTaskScreen() {
         visible={showTimePicker}
         mode="time"
         value={currentTime}
+        minimumDate={timePickerMinimum}
         title="Select Time"
         onConfirm={(d) => { setCurrentTime(d); setShowTimePicker(false); }}
         onCancel={() => setShowTimePicker(false)}
@@ -810,6 +885,7 @@ export default function AddTaskScreen() {
         visible={showStartDate}
         mode="date"
         value={startDate ?? new Date()}
+        minimumDate={(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })()}
         title="Start Date"
         onConfirm={(d) => { setStartDate(d); setShowStartDate(false); }}
         onCancel={() => setShowStartDate(false)}
@@ -936,6 +1012,9 @@ const s = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 6,
   },
   timeChipText: { fontSize: 12, fontFamily: F.m.semiBold, color: '#E53935' },
+  timeChipPast: { backgroundColor: '#F3F4F6', borderColor: '#D1D5DB' },
+  timeChipTextPast: { color: '#9CA3AF' },
+  timeChipPassedLabel: { fontSize: 10, fontFamily: F.m.semiBold, color: '#9CA3AF', letterSpacing: 0.3 },
 
   datesRow: { flexDirection: 'row', gap: 12, marginBottom: 4 },
   dateField: { flex: 1 },
@@ -958,6 +1037,18 @@ const s = StyleSheet.create({
   freqBtnActive: { backgroundColor: '#E53935', borderColor: '#E53935' },
   freqBtnText: { fontSize: 12, fontFamily: F.m.semiBold, color: '#6B7280' },
   freqBtnTextActive: { color: '#FFF' },
+  customSummary: {
+    marginTop: 12, backgroundColor: '#FFF9F9',
+    borderRadius: 10, padding: 12, gap: 8,
+    borderWidth: 1, borderColor: '#FCE4E4',
+  },
+  customSummaryRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  customSummaryDay: { fontSize: 13, fontFamily: F.m.semiBold, color: '#111', width: 36 },
+  customSummaryTime: { fontSize: 13, fontFamily: F.i.regular, color: '#374151', flex: 1 },
+  customSummaryEdit: { fontSize: 12, fontFamily: F.m.semiBold, color: '#E53935', marginTop: 4 },
 
   priorityRow: { flexDirection: 'row', gap: 20, alignItems: 'center' },
   radioItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },

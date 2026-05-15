@@ -716,10 +716,7 @@ function CaregiverCircle() {
                 <View style={s.sectionHeader}>
                   <Text style={s.sectionTitle}>Care Circle</Text>
                   <TouchableOpacity
-                    onPress={() => router.push({
-                      pathname: '/(app)/manage-carecircle',
-                      params: { careReceiverId: selectedBooking.careReceiverId, receiverName },
-                    })}
+                    onPress={() => router.push('/(app)/add-care-receiver')}
                     activeOpacity={0.7}
                   >
                     <Text style={s.addNewLink}>Add New</Text>

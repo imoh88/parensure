@@ -126,6 +126,11 @@ export const authApi = {
     return response.data;
   },
 
+  removeDevice: async (fcmToken: string): Promise<ApiResponse<null>> => {
+    const response = await apiClient.delete('/auth/device', { data: { fcmToken } });
+    return response.data;
+  },
+
   deleteAccount: async (): Promise<ApiResponse<null>> => {
     const response = await apiClient.delete('/auth/account');
     return response.data;

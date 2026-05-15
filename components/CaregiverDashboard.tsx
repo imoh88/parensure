@@ -13,6 +13,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Platform,
   RefreshControl,
   ScrollView,
   StatusBar,
@@ -221,7 +222,10 @@ export default function CaregiverDashboard() {
     if (isStale()) fetchBookings();
 
     const careReceiverId = bookings[selectedIdx]?.careReceiverId;
-    if (careReceiverId) fetchAppointments(careReceiverId);
+    if (careReceiverId) {
+      fetchAppointments(careReceiverId);
+      fetchActivityLog(careReceiverId);
+    }
 
     // Show wellness popup once per session when screen is focused
     if (!wellnessChecked.current) {
@@ -424,9 +428,9 @@ export default function CaregiverDashboard() {
     <View style={s.healthSection}>
       <View style={s.healthHeader}>
         <Text style={s.healthTitle}>Health Overview</Text>
-        <TouchableOpacity activeOpacity={0.7}>
+        {/* <TouchableOpacity activeOpacity={0.7}>
           <Text style={s.healthManage}>Manage</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
       </View>
       <View style={s.metricsGrid}>
         {HEALTH_METRICS.map((m, i) => (
@@ -497,6 +501,7 @@ export default function CaregiverDashboard() {
   const medicationTasks = dayTasks.filter((t: any) => t.category === 'MEDICATION');
 
   const renderTaskItems = (items = nonMedicationTasks, emptyLabel = 'No tasks yet.') => {
+    items = items.slice(0, 3);
     if (loadingTasks) return <ActivityIndicator color="#E53935" style={{ marginTop: 20 }} />;
     if (items.length === 0) return (
       <View style={{ alignItems: 'center', paddingVertical: 24 }}>
@@ -509,18 +514,19 @@ export default function CaregiverDashboard() {
           const meta = TAG_META[item.category as string] ?? TAG_META['OTHER']!;
           const timeLabel = item.scheduledTimes?.[0] ?? '';
           const taskId = item._id ?? item.id;
-          const done = item.status === 'COMPLETED' || item.completed === true;
+          const done = item.status === 'COMPLETED';
           const isMarking = markingId === taskId;
           const today = new Date(); today.setHours(0, 0, 0, 0);
           const isFuture = selectedDate > today;
           const isMissed = (() => {
             if (done || isFuture) return false;
-            // Past day — any incomplete task is missed
+            if (item.status === 'MISSED') return true;
+            // Past day — any still-PENDING task is missed
             if (selectedDate < today) return true;
-            // Today — check if scheduled time passed by > 30 min
+            // Today — lock immediately once scheduled time has passed
             if (timeLabel) {
               const scheduled = parseScheduledTime(timeLabel, selectedDate);
-              if (scheduled) return Date.now() > scheduled.getTime() + 30 * 60 * 1000;
+              if (scheduled) return Date.now() > scheduled.getTime();
             }
             return false;
           })();
@@ -528,7 +534,7 @@ export default function CaregiverDashboard() {
           return (
             <View key={taskId} style={s.taskRow}>
               <TouchableOpacity
-                style={[s.taskCard, { borderLeftColor: meta.border, backgroundColor: cardBg }]}
+                style={[s.taskCard, { backgroundColor: cardBg }]}
                 activeOpacity={0.8}
                 onPress={() => {
                   taskCache.set(item);
@@ -540,9 +546,10 @@ export default function CaregiverDashboard() {
                     <View style={[s.tagChip, { backgroundColor: meta.bg }]}>
                       <Text style={[s.tagText, { color: meta.color }]}>{item.category}</Text>
                     </View>
+                    <View style={{ flex: 1 }} />
                     {item.priority === 'HIGH' && (
                       <View style={s.criticalChip}>
-                        <Text style={s.criticalText}>HIGH</Text>
+                        <Text style={s.criticalText}>CRITICAL</Text>
                       </View>
                     )}
                   </View>
@@ -550,29 +557,38 @@ export default function CaregiverDashboard() {
                   {item.description ? (
                     <Text style={s.taskSub} numberOfLines={1}>{item.description}</Text>
                   ) : null}
-                  {timeLabel ? (
-                    <View style={s.taskTime}>
-                      <Ionicons name="time-outline" size={12} color="#9CA3AF" />
-                      <Text style={s.taskTimeText}>{timeLabel}</Text>
+                  <View style={s.taskTime}>
+                    <Ionicons name="time-outline" size={13} color={timeLabel ? meta.color : '#D1D5DB'} />
+                    <Text style={[s.taskTimeText, { color: timeLabel ? meta.color : '#D1D5DB' }]}>
+                      {timeLabel || 'No time set'}
+                    </Text>
+                  </View>
+                </View>
+                {(() => {
+                  const photoUrl = selectedBooking?.careReceiver?.user?.profileImageKey;
+                  return photoUrl ? (
+                    <Image source={{ uri: photoUrl }} style={s.taskAvatar} />
+                  ) : (
+                    <View style={[s.taskAvatar, s.taskAvatarFallback]}>
+                      <Text style={s.taskAvatarText}>
+                        {selectedFirstName ? selectedFirstName.charAt(0).toUpperCase() : '?'}
+                      </Text>
                     </View>
-                  ) : null}
-                </View>
-                <View style={s.taskAvatar}>
-                  <Text style={s.taskAvatarText}>
-                    {selectedFirstName ? selectedFirstName.charAt(0).toUpperCase() : '?'}
-                  </Text>
-                </View>
+                  );
+                })()}
               </TouchableOpacity>
               <TouchableOpacity
-                style={done ? s.taskCheckDone : isFuture ? s.taskCheckboxFuture : s.taskCheckbox}
-                onPress={() => { if (!done && !isMarking && !isFuture) handleToggleTask(taskId); }}
-                activeOpacity={isFuture ? 1 : 0.7}
-                disabled={done || isFuture}
+                style={done ? s.taskCheckDone : isMissed ? s.taskCheckMissed : isFuture ? s.taskCheckboxFuture : s.taskCheckbox}
+                onPress={() => { if (!done && !isMissed && !isMarking && !isFuture) handleToggleTask(taskId); }}
+                activeOpacity={(isFuture || isMissed) ? 1 : 0.7}
+                disabled={done || isMissed || isFuture}
               >
                 {isMarking ? (
                   <ActivityIndicator size="small" color="#FFF" />
                 ) : done ? (
                   <Ionicons name="checkmark" size={14} color="#FFF" />
+                ) : isMissed ? (
+                  <Ionicons name="close" size={14} color="#DC2626" />
                 ) : isFuture ? (
                   <Ionicons name="lock-closed-outline" size={12} color="#D1D5DB" />
                 ) : null}
@@ -604,7 +620,7 @@ export default function CaregiverDashboard() {
           return (
             <View key={apptId} style={s.taskRow}>
               <TouchableOpacity
-                style={[s.taskCard, { borderLeftColor: '#3B82F6' }, isApptFuture && s.taskCardLocked]}
+                style={[s.taskCard, isApptFuture && s.taskCardLocked]}
                 activeOpacity={isApptFuture ? 1 : 0.8}
                 disabled={isApptFuture}
                 onPress={() => {
@@ -632,7 +648,7 @@ export default function CaregiverDashboard() {
                   ) : null}
                   {timeLabel ? (
                     <View style={s.taskTime}>
-                      <Ionicons name="time-outline" size={12} color="#9CA3AF" />
+                      <Ionicons name="time-outline" size={13} color="#6B7280" />
                       <Text style={s.taskTimeText}>{timeLabel}</Text>
                     </View>
                   ) : null}
@@ -657,10 +673,12 @@ export default function CaregiverDashboard() {
 
   // ─── Activity log ──────────────────────────────────────────────────────────
   const ACTION_LABEL: Record<string, string> = {
-    TASK_CREATED:       'created task',
-    TASK_COMPLETED:     'marked as complete',
-    TASK_CANCELLED:     'cancelled task',
-    APPOINTMENT_CREATED:'added appointment',
+    TASK_CREATED:        'created task',
+    TASK_COMPLETED:      'marked as complete',
+    TASK_CANCELLED:      'cancelled task',
+    APPOINTMENT_CREATED: 'added appointment',
+    SOS_TRIGGERED:       'triggered an SOS alert',
+    FALL_DETECTED:       'triggered a fall alert',
   };
 
   const formatActivityTime = (iso: string) => {
@@ -704,31 +722,33 @@ export default function CaregiverDashboard() {
           {activityLog.slice(0, 3).map((entry: any, idx: number) => {
             const displayed = activityLog.slice(0, 3);
             const isLast = idx === displayed.length - 1;
-            const firstName = (entry.actorName as string).split(' ')[0] ?? entry.actorName;
+            const isSos = entry.isSosAlert === true;
+            const firstName = (entry.actorName as string ?? '').split(' ')[0] ?? entry.actorName;
             const initial = firstName.charAt(0).toUpperCase();
             const verb = ACTION_LABEL[entry.action as string] ?? entry.action;
             return (
               <View key={entry.id ?? idx} style={s.activityRow}>
                 {/* Timeline spine */}
                 <View style={s.activitySpineCol}>
-                  <View style={s.activityDot} />
+                  <View style={[s.activityDot, isSos && s.activityDotSos]} />
                   {!isLast && <View style={s.activityLine} />}
                 </View>
 
                 <View style={s.activityContent}>
                   <View style={s.activityTopRow}>
-                    <View style={s.activityAvatar}>
-                      <Text style={s.activityAvatarText}>{initial}</Text>
+                    <View style={[s.activityAvatar, isSos && s.activityAvatarSos]}>
+                      <Text style={s.activityAvatarText}>{isSos ? '🆘' : initial}</Text>
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={s.activityTime}>{formatActivityTime(entry.createdAt)}</Text>
                       <Text style={s.activityDesc}>
                         <Text style={s.activityActor}>{firstName}</Text>
                         {' '}
-                        <Text style={s.activityVerb}>{verb}</Text>
-                        {' '}
-                        <Text style={s.activityTarget}>{entry.targetTitle}</Text>
-                        {'.' }
+                        <Text style={[s.activityVerb, isSos && s.activityVerbSos]}>{verb}</Text>
+                        {!isSos && entry.targetTitle ? (
+                          <><Text>{' '}</Text><Text style={s.activityTarget}>{entry.targetTitle}</Text></>
+                        ) : null}
+                        {'.'}
                       </Text>
                     </View>
                   </View>
@@ -1101,16 +1121,22 @@ const s = StyleSheet.create({
   taskRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   taskCard: {
     flex: 1, backgroundColor: '#FFF', borderRadius: 14,
-    borderLeftWidth: 4, borderLeftColor: '#E5E7EB',
     flexDirection: 'row', alignItems: 'center',
     overflow: 'hidden',
-    shadowColor: '#000', shadowOpacity: 0.04,
-    shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000', shadowOpacity: 0.06,
+        shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
+      },
+      android: {
+        borderWidth: 1, borderColor: '#F0F0F0',
+      },
+    }),
   },
   taskCardLocked: { opacity: 0.55 },
   taskCardDone: {},
   taskCardInner: { flex: 1, padding: 14, gap: 4 },
-  taskTop: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
+  taskTop: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
   tagChip: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   tagText: { fontSize: 10, fontFamily: F.m.bold, letterSpacing: 0.3 },
   criticalChip: {
@@ -1121,11 +1147,14 @@ const s = StyleSheet.create({
   taskTitle: { fontSize: 15, fontFamily: F.m.semiBold, color: '#111' },
   taskTitleDone: { textDecorationLine: 'line-through', color: '#9CA3AF' },
   taskSub: { fontSize: 12, fontFamily: F.i.regular, color: '#6B7280' },
-  taskTime: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-  taskTimeText: { fontSize: 11, fontFamily: F.i.regular, color: '#9CA3AF' },
+  taskTime: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  taskTimeText: { fontSize: 12, fontFamily: F.m.medium, color: '#6B7280' },
   taskAvatar: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: '#FEE2E2', marginRight: 12,
+    width: 44, height: 44, borderRadius: 22,
+    marginRight: 12,
+  },
+  taskAvatarFallback: {
+    backgroundColor: '#FEE2E2',
     alignItems: 'center', justifyContent: 'center',
   },
   taskAvatarText: { fontSize: 14, fontFamily: F.m.bold, color: '#E53935' },
@@ -1143,6 +1172,12 @@ const s = StyleSheet.create({
   taskCheckDone: {
     width: 28, height: 28, borderRadius: 14,
     backgroundColor: '#E53935',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  taskCheckMissed: {
+    width: 28, height: 28, borderRadius: 14,
+    borderWidth: 2, borderColor: '#DC2626',
+    backgroundColor: '#FEE2E2',
     alignItems: 'center', justifyContent: 'center',
   },
 
@@ -1179,6 +1214,7 @@ const s = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: '#E53935',
   },
+  activityDotSos: { backgroundColor: '#DC2626', width: 12, height: 12, borderRadius: 6 },
   activityLine: {
     flex: 1,
     width: 2,
@@ -1210,6 +1246,8 @@ const s = StyleSheet.create({
   activityDesc: { fontSize: 13, fontFamily: F.i.regular, color: '#374151', lineHeight: 19 },
   activityActor: { fontFamily: F.m.bold, color: '#111' },
   activityVerb: { fontFamily: F.i.regular, color: '#374151' },
+  activityAvatarSos: { backgroundColor: '#FEE2E2', borderWidth: 1.5, borderColor: '#DC2626' },
+  activityVerbSos: { color: '#DC2626', fontFamily: F.m.semiBold },
   activityTarget: { fontFamily: F.m.semiBold, color: '#111' },
   activityNote: {
     marginTop: 8,

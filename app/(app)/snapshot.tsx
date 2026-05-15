@@ -3,8 +3,9 @@ import { caregiverApi } from '@/lib/api/caregiver';
 import { F } from '@/lib/fonts';
 import { appointmentCache } from '@/lib/utils/appointmentCache';
 import { taskCache } from '@/lib/utils/taskCache';
+import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowDown2, ArrowLeft, Building, Calendar, Clock, Hospital, Moon, Profile, Sun1, TickCircle } from 'iconsax-react-native';
+import { ArrowLeft, Building, Calendar, Clock, Hospital, Moon, Profile, Sun1, TickCircle } from 'iconsax-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -32,34 +33,95 @@ function buildWeek() {
 }
 const WEEK = buildWeek();
 
-function todayLabel() {
-  return new Date()
-    .toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
-    .toUpperCase();
-}
 function currentMonthName() {
   return new Date().toLocaleDateString('en-US', { month: 'long' });
 }
-function nextMonthName() {
-  const d = new Date(); d.setMonth(d.getMonth() + 1);
-  return d.toLocaleDateString('en-US', { month: 'long' });
+
+function getDateForDayIndex(idx: number): Date {
+  const d = new Date();
+  d.setDate(d.getDate() + (idx - TODAY_IDX));
+  d.setHours(0, 0, 0, 0);
+  return d;
 }
-function formatDateRange(offsetStart: number, offsetEnd: number) {
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const s = new Date(); s.setDate(s.getDate() + offsetStart);
-  const e = new Date(); e.setDate(e.getDate() + offsetEnd);
-  return `${months[s.getMonth()]} ${s.getDate()} - ${months[e.getMonth()]} ${e.getDate()}`;
+
+function apptMatchesDay(appt: any, selected: Date): boolean {
+  const freq: string = appt.frequency ?? 'ONE_TIME';
+  const rawStart = appt.startDate ?? appt.createdAt;
+  const start = rawStart ? new Date(rawStart) : null;
+  if (start) start.setHours(0, 0, 0, 0);
+  const end = appt.endDate ? new Date(appt.endDate) : null;
+  if (end) end.setHours(23, 59, 59, 999);
+  if (start && selected < start) return false;
+  if (end && selected > end) return false;
+  if (freq === 'DAILY') return true;
+  if (freq === 'WEEKLY') return start ? selected.getDay() === start.getDay() : true;
+  // ONE_TIME: match exactly on start date
+  return start ? selected.getTime() === start.getTime() : false;
+}
+
+function taskMatchesDay(task: any, selected: Date): boolean {
+  const freq: string = task.frequency ?? 'ONE_TIME';
+  const rawStart = task.startDate ?? task.createdAt;
+  const start = rawStart ? new Date(rawStart) : null;
+  if (start) start.setHours(0, 0, 0, 0);
+  const end = task.endDate ? new Date(task.endDate) : null;
+  if (end) end.setHours(23, 59, 59, 999);
+  if (start && selected < start) return false;
+  if (end && selected > end) return false;
+  if (freq === 'DAILY') return true;
+  if (freq === 'WEEKLY') return start ? selected.getDay() === start.getDay() : true;
+  if (freq === 'CUSTOM') return true;
+  return start ? selected.getTime() === start.getTime() : true;
+}
+
+function selectedDayLabel(idx: number): string {
+  const d = getDateForDayIndex(idx);
+  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }).toUpperCase();
+}
+
+function filterPillLabel(idx: number): string {
+  if (idx === TODAY_IDX) return 'Today';
+  if (idx === TODAY_IDX + 1) return 'Tomorrow';
+  if (idx === TODAY_IDX - 1) return 'Yesterday';
+  const d = getDateForDayIndex(idx);
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
 // ─── Task status helpers ───────────────────────────────────────────────────────
-type StatusKey = 'ATTENTION_NEEDED' | 'NOT_STARTED' | 'COMPLETED';
+type StatusKey = 'ATTENTION_NEEDED' | 'NOT_STARTED' | 'COMPLETED' | 'MISSED';
 const STATUS_META: Record<StatusKey, { label: string; color: string; bg: string; border: string }> = {
   ATTENTION_NEEDED: { label: 'ATTENTION NEEDED', color: '#F59E0B', bg: '#FFFBEB', border: '#F59E0B' },
   NOT_STARTED:      { label: 'NOT STARTED',      color: '#6B7280', bg: '#F3F4F6', border: '#D1D5DB' },
   COMPLETED:        { label: 'COMPLETED',         color: '#10B981', bg: '#ECFDF5', border: '#10B981' },
+  MISSED:           { label: 'MISSED',            color: '#DC2626', bg: '#FEF2F2', border: '#DC2626' },
 };
-function taskStatus(item: any): StatusKey {
-  if (item.status === 'COMPLETED' || item.completed === true) return 'COMPLETED';
+
+function parseScheduledTimeOnDate(timeStr: string, onDate: Date): Date | null {
+  const match = timeStr.trim().match(/^(\d+):(\d+)\s*(AM|PM)$/i);
+  if (!match) return null;
+  let h = parseInt(match[1]!, 10);
+  const m = parseInt(match[2]!, 10);
+  const p = match[3]!.toUpperCase();
+  if (p === 'PM' && h !== 12) h += 12;
+  if (p === 'AM' && h === 12) h = 0;
+  const d = new Date(onDate);
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
+function taskStatus(item: any, refDate?: Date): StatusKey {
+  if (item.status === 'COMPLETED') return 'COMPLETED';
+  if (item.status === 'MISSED') return 'MISSED';
+  // Detect overdue on the frontend: PENDING task whose scheduled time has passed
+  if (item.status === 'PENDING' && item.scheduledTimes?.length > 0) {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const ref = refDate ?? new Date();
+    const refDay = new Date(ref); refDay.setHours(0, 0, 0, 0);
+    if (refDay <= today) {
+      const scheduled = parseScheduledTimeOnDate(item.scheduledTimes[0], refDay);
+      if (scheduled && Date.now() > scheduled.getTime()) return 'MISSED';
+    }
+  }
   if (item.priority === 'HIGH' || item.status === 'OVERDUE') return 'ATTENTION_NEEDED';
   return 'NOT_STARTED';
 }
@@ -183,22 +245,26 @@ export default function SnapshotScreen() {
   }, [fetchTasks, fetchAppointments]);
 
   // ── Tab pills ──
-  const renderTabs = () => (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabRow}>
-      {TAB_LABELS.map((label, i) => {
-        const medTasks = tasks.filter((t: any) => t.category === 'MEDICATION');
-        const badge = i === 0 ? tasks.filter((t: any) => t.category !== 'MEDICATION').length : i === 1 ? medTasks.length : appointments.length;
-        return (
-          <TouchableOpacity key={i} style={[s.tabPill, activeTab === i && s.tabPillActive]} onPress={() => setActiveTab(i)}>
-            <Text style={[s.tabLabel, activeTab === i && s.tabLabelActive]}>{label}</Text>
-            <View style={[s.tabBadge, activeTab === i && s.tabBadgeActive]}>
-              <Text style={[s.tabBadgeText, activeTab === i && s.tabBadgeTextActive]}>{badge}</Text>
-            </View>
-          </TouchableOpacity>
-        );
-      })}
-    </ScrollView>
-  );
+  const renderTabs = () => {
+    const selDate = getDateForDayIndex(activeDay);
+    const filteredNonMed = tasks.filter((t: any) => t.category !== 'MEDICATION').filter((t) => taskMatchesDay(t, selDate));
+    const medTasks = tasks.filter((t: any) => t.category === 'MEDICATION');
+    return (
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabRow}>
+        {TAB_LABELS.map((label, i) => {
+          const badge = i === 0 ? filteredNonMed.length : i === 1 ? medTasks.length : appointments.length;
+          return (
+            <TouchableOpacity key={i} style={[s.tabPill, activeTab === i && s.tabPillActive]} onPress={() => setActiveTab(i)}>
+              <Text style={[s.tabLabel, activeTab === i && s.tabLabelActive]}>{label}</Text>
+              <View style={[s.tabBadge, activeTab === i && s.tabBadgeActive]}>
+                <Text style={[s.tabBadgeText, activeTab === i && s.tabBadgeTextActive]}>{badge}</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    );
+  };
 
   // ── Calendar strip ──
   const renderCalendar = (showMonth = false) => (
@@ -222,17 +288,23 @@ export default function SnapshotScreen() {
 
   // ── TASKS VIEW ──
   const renderTasksView = () => {
-    const nonMedTasks = tasks.filter((t: any) => t.category !== 'MEDICATION');
+    const selectedDate = getDateForDayIndex(activeDay);
+    const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0);
+    const isFutureDay = selectedDate > todayMidnight;
+    const nonMedTasks = tasks
+      .filter((t: any) => t.category !== 'MEDICATION')
+      .filter((t) => taskMatchesDay(t, selectedDate));
     const completedCount = nonMedTasks.filter(t => taskStatus(t) === 'COMPLETED').length;
     const pct = nonMedTasks.length > 0 ? Math.round((completedCount / nonMedTasks.length) * 100) : 0;
+    const isToday = activeDay === TODAY_IDX;
 
     return (
       <>
-        {/* Focus on Today */}
+        {/* Focus row */}
         <View style={s.focusRow}>
           <View style={s.focusLeft}>
-            <Text style={s.focusDate}>{todayLabel()}</Text>
-            <Text style={s.focusTitle}>{'Focus on\nToday'}</Text>
+            <Text style={s.focusDate}>{selectedDayLabel(activeDay)}</Text>
+            <Text style={s.focusTitle}>{isToday ? 'Focus on\nToday' : 'Tasks for\nThis Day'}</Text>
           </View>
           <View style={s.focusRight}>
             <CircularGauge pct={pct} />
@@ -240,11 +312,9 @@ export default function SnapshotScreen() {
           </View>
         </View>
 
-        {/* Filter pill */}
-        <TouchableOpacity style={s.filterPill} activeOpacity={0.7}>
-          <Text style={s.filterText}>Today</Text>
-          <ArrowDown2 size={14} color="#111" variant="Linear" />
-        </TouchableOpacity>
+        {/* Calendar strip */}
+        {renderCalendar()}
+
 
         {/* Task cards */}
         {loading ? (
@@ -252,17 +322,22 @@ export default function SnapshotScreen() {
         ) : nonMedTasks.length === 0 ? (
           <View style={s.empty}>
             <TickCircle size={40} color="#D1D5DB" variant="Linear" />
-            <Text style={s.emptyText}>No tasks yet</Text>
+            <Text style={s.emptyText}>No tasks for this day</Text>
           </View>
         ) : (
           <View style={s.taskList}>
             {nonMedTasks.map((item) => {
               const taskId = item._id ?? item.id;
-              const sk = taskStatus(item);
+              const sk = taskStatus(item, selectedDate);
               const meta = STATUS_META[sk]!;
               const time = item.scheduledTimes?.[0] ?? '';
+              const dateLabel = item.startDate
+                ? new Date(item.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                : null;
               const person = item.assignedTo ?? item.caregiverName ?? 'Primary Caregiver';
               const done = sk === 'COMPLETED';
+              const isMissed = sk === 'MISSED';
+              const isLocked = isFutureDay && !done && !isMissed;
               const isMarking = markingId === taskId;
               return (
                 <View key={taskId} style={s.taskRow}>
@@ -277,12 +352,18 @@ export default function SnapshotScreen() {
                     <View style={[s.statusChip, { backgroundColor: meta.bg }]}>
                       <Text style={[s.statusText, { color: meta.color }]}>{meta.label}</Text>
                     </View>
-                    <Text style={[s.taskTitle, done && s.taskTitleDone]}>{item.title}</Text>
+                    <Text style={[s.taskTitle, (done || isMissed) && s.taskTitleDone]}>{item.title}</Text>
                     <View style={s.taskMeta}>
                       {time ? (
                         <View style={s.metaItem}>
                           <Clock size={13} color="#9CA3AF" variant="Linear" />
                           <Text style={s.metaText}>{time}</Text>
+                        </View>
+                      ) : null}
+                      {dateLabel ? (
+                        <View style={s.metaItem}>
+                          <Calendar size={13} color="#9CA3AF" variant="Linear" />
+                          <Text style={s.metaText}>{dateLabel}</Text>
                         </View>
                       ) : null}
                       <View style={s.metaItem}>
@@ -292,15 +373,19 @@ export default function SnapshotScreen() {
                     </View>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={done ? s.taskCheckDone : s.taskCheckbox}
-                    onPress={() => { if (!done && !isMarking) handleToggleTask(taskId); }}
-                    activeOpacity={0.7}
-                    disabled={done}
+                    style={done ? s.taskCheckDone : isMissed ? s.taskCheckMissed : isLocked ? s.taskCheckLocked : s.taskCheckbox}
+                    onPress={() => { if (!done && !isMissed && !isLocked && !isMarking) handleToggleTask(taskId); }}
+                    activeOpacity={isMissed || isLocked ? 1 : 0.7}
+                    disabled={done || isMissed || isLocked}
                   >
                     {isMarking ? (
                       <ActivityIndicator size="small" color="#FFF" />
                     ) : done ? (
                       <TickCircle size={18} color="#FFF" variant="Bold" />
+                    ) : isMissed ? (
+                      <Ionicons name="close" size={14} color="#DC2626" />
+                    ) : isLocked ? (
+                      <Ionicons name="lock-closed-outline" size={12} color="#D1D5DB" />
                     ) : null}
                   </TouchableOpacity>
                 </View>
@@ -401,26 +486,16 @@ export default function SnapshotScreen() {
 
   // ── APPOINTMENTS VIEW ──
   const renderAppointmentsView = () => {
-    const todayItems  = appointments.slice(0, Math.ceil(appointments.length / 3) || appointments.length);
-    const weekItems   = appointments.slice(Math.ceil(appointments.length / 3), Math.ceil(appointments.length * 2 / 3));
-    const monthItems  = appointments.slice(Math.ceil(appointments.length * 2 / 3));
+    const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0);
+    const selectedDate = getDateForDayIndex(activeDay);
+    const isFutureDay = selectedDate > todayMidnight;
+    const dayAppointments = appointments.filter((a: any) => apptMatchesDay(a, selectedDate));
 
     if (loading) return <ActivityIndicator color="#E53935" style={{ marginTop: 40 }} />;
-    if (appointments.length === 0) return (
-      <View style={s.empty}>
-        <Calendar size={40} color="#D1D5DB" variant="Linear" />
-        <Text style={s.emptyText}>No appointments yet</Text>
-      </View>
-    );
-
-    const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0);
 
     const renderApptCard = (item: any) => {
       const apptId = item._id ?? item.id;
       const done = item.status === 'COMPLETED';
-      const apptDate = item.startDate ? new Date(item.startDate) : null;
-      if (apptDate) apptDate.setHours(0, 0, 0, 0);
-      const isFuture = apptDate ? apptDate > todayMidnight : false;
       return (
         <View key={apptId} style={s.apptRow}>
           <TouchableOpacity
@@ -441,15 +516,15 @@ export default function SnapshotScreen() {
               ) : null}
             </View>
             <View style={s.apptRight}>
-              <Text style={s.apptTime}>{item.scheduledTimes?.[0] ?? '09:30 AM'}</Text>
-              <Text style={s.apptDateLabel}>{isFuture ? 'Upcoming' : 'Today'}</Text>
+              <Text style={s.apptTime}>{item.scheduledTimes?.[0] ?? ''}</Text>
+              <Text style={s.apptDateLabel}>{isFutureDay ? 'Upcoming' : 'Today'}</Text>
             </View>
           </TouchableOpacity>
           {done ? (
             <View style={s.checkDone}><TickCircle size={14} color="#E53935" variant="Bold" /></View>
-          ) : isFuture ? (
+          ) : isFutureDay ? (
             <View style={s.checkboxLocked}>
-              <TickCircle size={14} color="#D1D5DB" variant="Linear" />
+              <Ionicons name="lock-closed-outline" size={12} color="#D1D5DB" />
             </View>
           ) : (
             <View style={s.checkbox} />
@@ -458,25 +533,19 @@ export default function SnapshotScreen() {
       );
     };
 
-    const renderApptSection = (title: string, range: string, items: any[]) => {
-      if (items.length === 0) return null;
-      return (
-        <View style={s.apptSection}>
-          <View style={s.apptSectionHeader}>
-            <Text style={s.apptSectionTitle}>{title}</Text>
-            <Text style={s.apptSectionRange}>{range}</Text>
-          </View>
-          {items.map((it) => renderApptCard(it))}
-        </View>
-      );
-    };
-
     return (
       <>
         {renderCalendar()}
-        {renderApptSection('Today', 'Today', todayItems)}
-        {renderApptSection('Upcoming This Week', formatDateRange(1, 7), weekItems)}
-        {renderApptSection('Next Month', nextMonthName(), monthItems)}
+        {dayAppointments.length === 0 ? (
+          <View style={s.empty}>
+            <Calendar size={40} color="#D1D5DB" variant="Linear" />
+            <Text style={s.emptyText}>No appointments for this day</Text>
+          </View>
+        ) : (
+          <View style={s.apptSection}>
+            {dayAppointments.map((it) => renderApptCard(it))}
+          </View>
+        )}
       </>
     );
   };
@@ -582,6 +651,16 @@ const s = StyleSheet.create({
     width: 32, height: 32, borderRadius: 16,
     backgroundColor: '#E53935', alignItems: 'center', justifyContent: 'center',
   },
+  taskCheckMissed: {
+    width: 32, height: 32, borderRadius: 16,
+    borderWidth: 2.5, borderColor: '#DC2626',
+    backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center',
+  },
+  taskCheckLocked: {
+    width: 32, height: 32, borderRadius: 16,
+    borderWidth: 2, borderColor: '#D1D5DB',
+    backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center',
+  },
 
   // ── Medications: progress card ──
   progressCard: {
@@ -676,6 +755,7 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 }, elevation: 2,
   },
   apptCardDone: { opacity: 0.55 },
+  apptCardLocked: { opacity: 0.55 },
   apptLeft: { flex: 1, gap: 5 },
   apptTitle: { fontSize: 15, fontFamily: F.m.semiBold, color: '#111' },
   apptTitleDone: { color: '#9CA3AF' },
@@ -685,7 +765,7 @@ const s = StyleSheet.create({
   apptTime: { fontSize: 13, fontFamily: F.m.semiBold, color: '#111' },
   apptDateLabel: { fontSize: 11, fontFamily: F.i.regular, color: '#9CA3AF' },
   checkbox: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: '#E5E7EB' },
-  checkboxLocked: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: '#E5E7EB', backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
+  checkboxLocked: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: '#D1D5DB', backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
   checkDone: {
     width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: '#FCA5A5',
     alignItems: 'center', justifyContent: 'center', backgroundColor: '#FEF2F2',

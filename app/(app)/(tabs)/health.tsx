@@ -1,9 +1,11 @@
+import { alertApi } from '@/lib/api/alert';
 import { F } from '@/lib/fonts';
 import { useAuthStore } from '@/lib/store/authStore';
 import { useRouter } from 'expo-router';
 import { Activity, Drop, Heart, Man } from 'iconsax-react-native';
-import React from 'react';
+import React, { useState } from 'react';
 import {
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -28,6 +30,33 @@ export default function HealthScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuthStore();
   const firstName = user?.fullName?.split(' ')[0] ?? 'there';
+  const [sosPending, setSosPending] = useState(false);
+
+  function handleSos() {
+    Alert.alert(
+      '🚨 Send SOS Alert?',
+      'This will immediately notify your caregiver that you need urgent help.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send SOS',
+          style: 'destructive',
+          onPress: async () => {
+            if (sosPending) return;
+            setSosPending(true);
+            try {
+              await alertApi.triggerSos();
+              Alert.alert('SOS Sent', 'Your caregiver has been notified.');
+            } catch {
+              Alert.alert('Error', 'Failed to send SOS. Please try again.');
+            } finally {
+              setSosPending(false);
+            }
+          },
+        },
+      ]
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F5F5F7' }}>
@@ -204,10 +233,12 @@ export default function HealthScreen() {
 
       {/* SOS */}
       <TouchableOpacity
-        style={[s.sos, { bottom: insets.bottom + 16 }]}
+        style={[s.sos, { bottom: insets.bottom + 16 }, sosPending && { opacity: 0.6 }]}
         activeOpacity={0.85}
+        onPress={handleSos}
+        disabled={sosPending}
       >
-        <Text style={s.sosText}>SOS</Text>
+        <Text style={s.sosText}>{sosPending ? '…' : 'SOS'}</Text>
       </TouchableOpacity>
     </View>
   );

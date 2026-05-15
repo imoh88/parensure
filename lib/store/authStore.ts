@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { AccountType, User } from '../types';
 import { storage } from '../utils/storage';
 import { apiClient } from '../api/client';
+import { unregisterDeviceForPushNotifications } from '../utils/notifications';
 
 interface AuthState {
   user: User | null;
@@ -62,6 +63,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
+    // Remove FCM token before clearing credentials so the API call still has auth
+    await unregisterDeviceForPushNotifications();
     await storage.clearAll();
     set({ user: null, token: null, isAuthenticated: false });
   },
