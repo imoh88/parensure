@@ -100,6 +100,12 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   }
 
   try {
+    if (Platform.OS === 'android') {
+      // Firebase Admin SDK requires raw FCM tokens, not Expo push tokens
+      const result = await Notifications.getDevicePushTokenAsync();
+      console.log('[Notifications] Native FCM token:', result.data);
+      return result.data as string;
+    }
     const projectId =
       Constants.expoConfig?.extra?.eas?.projectId ??
       Constants.easConfig?.projectId;
@@ -107,7 +113,7 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     console.log('[Notifications] Expo push token:', result.data);
     return result.data;
   } catch (err) {
-    console.warn('[Notifications] Failed to get Expo push token:', err);
+    console.warn('[Notifications] Failed to get push token:', err);
     return null;
   }
 }
