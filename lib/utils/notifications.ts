@@ -124,17 +124,3 @@ export async function registerDeviceForPushNotifications(): Promise<void> {
   }
 }
 
-export async function unregisterDeviceForPushNotifications(): Promise<void> {
-  try {
-    const projectId =
-      Constants.expoConfig?.extra?.eas?.projectId ??
-      Constants.easConfig?.projectId;
-    const result = await Notifications.getExpoPushTokenAsync({ projectId });
-    if (result.data) {
-      await authApi.removeDevice(result.data);
-      console.log('[Notifications] Device unregistered');
-    }
-  } catch (err) {
-    console.warn('[Notifications] Device unregister failed (non-fatal):', err);
-  }
-}
