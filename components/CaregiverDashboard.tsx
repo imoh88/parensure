@@ -146,6 +146,17 @@ function parseScheduledTime(timeStr: string, onDate: Date): Date | null {
   return d;
 }
 
+function earliestTime(times: string[]): string {
+  if (times.length === 0) return '';
+  return times.reduce((best, cur) => {
+    const a = parseScheduledTime(best, new Date());
+    const b = parseScheduledTime(cur, new Date());
+    if (!a) return cur;
+    if (!b) return best;
+    return b < a ? cur : best;
+  });
+}
+
 const TAG_META: Record<string, { color: string; bg: string; border: string }> = {
   MEDICATION: { color: '#10B981', bg: '#ECFDF5', border: '#10B981' },
   CHECK_IN:   { color: '#3B82F6', bg: '#EFF6FF', border: '#3B82F6' },
@@ -512,7 +523,7 @@ export default function CaregiverDashboard() {
       <View style={s.taskList}>
         {items.map((item: any) => {
           const meta = TAG_META[item.category as string] ?? TAG_META['OTHER']!;
-          const timeLabel = item.scheduledTimes?.[0] ?? '';
+          const timeLabel = earliestTime(item.scheduledTimes ?? []);
           const taskId = item._id ?? item.id;
           const done = item.status === 'COMPLETED';
           const isMarking = markingId === taskId;
@@ -615,7 +626,7 @@ export default function CaregiverDashboard() {
       <View style={s.taskList}>
         {dayAppointments.map((item: any) => {
           const apptId = item._id ?? item.id;
-          const timeLabel = item.scheduledTimes?.[0] ?? '';
+          const timeLabel = earliestTime(item.scheduledTimes ?? []);
           const isApptFuture = selectedDate > today;
           return (
             <View key={apptId} style={s.taskRow}>

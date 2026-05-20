@@ -79,13 +79,6 @@ function selectedDayLabel(idx: number): string {
   return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }).toUpperCase();
 }
 
-function filterPillLabel(idx: number): string {
-  if (idx === TODAY_IDX) return 'Today';
-  if (idx === TODAY_IDX + 1) return 'Tomorrow';
-  if (idx === TODAY_IDX - 1) return 'Yesterday';
-  const d = getDateForDayIndex(idx);
-  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-}
 
 // ─── Task status helpers ───────────────────────────────────────────────────────
 type StatusKey = 'ATTENTION_NEEDED' | 'NOT_STARTED' | 'COMPLETED' | 'MISSED';
@@ -109,16 +102,28 @@ function parseScheduledTimeOnDate(timeStr: string, onDate: Date): Date | null {
   return d;
 }
 
+/** Returns the earliest time string from a scheduledTimes array. */
+function earliestTime(times: string[]): string {
+  if (times.length === 0) return '';
+  return times.reduce((best, cur) => {
+    const a = parseScheduledTimeOnDate(best, new Date());
+    const b = parseScheduledTimeOnDate(cur, new Date());
+    if (!a) return cur;
+    if (!b) return best;
+    return b < a ? cur : best;
+  });
+}
+
 function taskStatus(item: any, refDate?: Date): StatusKey {
   if (item.status === 'COMPLETED') return 'COMPLETED';
   if (item.status === 'MISSED') return 'MISSED';
-  // Detect overdue on the frontend: PENDING task whose scheduled time has passed
+  // Detect overdue on the frontend: PENDING task whose earliest scheduled time has passed
   if (item.status === 'PENDING' && item.scheduledTimes?.length > 0) {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const ref = refDate ?? new Date();
     const refDay = new Date(ref); refDay.setHours(0, 0, 0, 0);
     if (refDay <= today) {
-      const scheduled = parseScheduledTimeOnDate(item.scheduledTimes[0], refDay);
+      const scheduled = parseScheduledTimeOnDate(earliestTime(item.scheduledTimes), refDay);
       if (scheduled && Date.now() > scheduled.getTime()) return 'MISSED';
     }
   }
@@ -330,7 +335,7 @@ export default function SnapshotScreen() {
               const taskId = item._id ?? item.id;
               const sk = taskStatus(item, selectedDate);
               const meta = STATUS_META[sk]!;
-              const time = item.scheduledTimes?.[0] ?? '';
+              const time = earliestTime(item.scheduledTimes ?? []);
               const dateLabel = item.startDate
                 ? new Date(item.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
                 : null;
@@ -429,10 +434,10 @@ export default function SnapshotScreen() {
         {/* Time-grouped medications */}
         {MED_PERIODS.map(({ key, label, icon: Icon }) => {
           const periodMeds = medicationTasks.filter(
-            (t: any) => getPeriod(t.scheduledTimes?.[0]) === key
+            (t: any) => getPeriod(earliestTime(t.scheduledTimes ?? [])) === key
           );
           if (periodMeds.length === 0) return null;
-          const periodTime = periodMeds[0]?.scheduledTimes?.[0] ?? '';
+          const periodTime = earliestTime(periodMeds[0]?.scheduledTimes ?? []);
           return (
             <View key={key} style={s.medSection}>
               <View style={s.medPeriodRow}>

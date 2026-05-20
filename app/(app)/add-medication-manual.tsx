@@ -148,7 +148,7 @@ export default function AddMedicationManualScreen() {
     prefillName?: string; prefillDosage?: string; prefillInstructions?: string; from?: string;
   }>();
 
-  const goBack = () => router.push((from as any) ?? '/(app)/add-medication');
+  const goBack = () => router.back();
   const { activeRole } = useAuthStore();
   const isCareReceiver = activeRole === 'CARE_RECEIVER';
 

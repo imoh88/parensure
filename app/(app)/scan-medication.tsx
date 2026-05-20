@@ -18,13 +18,10 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ScanMedicationScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
-
-  const goBack = () => router.push('/(app)/add-medication');
+  const goBack = () => router.back();
 
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);

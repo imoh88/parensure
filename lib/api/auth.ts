@@ -121,8 +121,8 @@ export const authApi = {
     return response.data;
   },
 
-  registerDevice: async (fcmToken: string): Promise<ApiResponse<null>> => {
-    const response = await apiClient.post('/auth/device', { fcmToken });
+  registerDevice: async (fcmToken: string, platform: 'android' | 'ios'): Promise<ApiResponse<null>> => {
+    const response = await apiClient.post('/auth/device', { fcmToken, platform });
     return response.data;
   },
 

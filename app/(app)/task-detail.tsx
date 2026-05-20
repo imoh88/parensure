@@ -27,6 +27,24 @@ const STATUS_META: Record<StatusKey, { label: string; color: string; bg: string 
   COMPLETED:        { label: 'COMPLETED',         color: '#10B981', bg: '#ECFDF5' },
 };
 
+function parseTimeToMinutes(timeStr: string): number {
+  const match = timeStr.trim().match(/^(\d+):(\d+)\s*(AM|PM)$/i);
+  if (!match) return Infinity;
+  let h = parseInt(match[1]!, 10);
+  const m = parseInt(match[2]!, 10);
+  const p = match[3]!.toUpperCase();
+  if (p === 'PM' && h !== 12) h += 12;
+  if (p === 'AM' && h === 12) h = 0;
+  return h * 60 + m;
+}
+
+function earliestTime(times: string[]): string {
+  if (times.length === 0) return '';
+  return times.reduce((best, cur) =>
+    parseTimeToMinutes(cur) < parseTimeToMinutes(best) ? cur : best
+  );
+}
+
 function taskStatus(item: any): StatusKey {
   if (item.status === 'COMPLETED' || item.completed === true) return 'COMPLETED';
   if (item.priority === 'HIGH' || item.status === 'OVERDUE') return 'ATTENTION_NEEDED';
@@ -77,7 +95,7 @@ export default function TaskDetailScreen() {
   const sk = done ? 'COMPLETED' : taskStatus(task);
   const meta = STATUS_META[sk]!;
   const resolvedTaskId = task._id ?? task.id;
-  const timeLabel = task.scheduledTimes?.[0] ?? '';
+  const timeLabel = earliestTime(task.scheduledTimes ?? []);
   const dueDate = task.endDate ?? task.startDate;
   const assignedName = task.createdByUser?.fullName ?? null;
   const assignedInitial = assignedName ? assignedName.charAt(0).toUpperCase() : null;

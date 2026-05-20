@@ -100,20 +100,13 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   }
 
   try {
-    if (Platform.OS === 'android') {
-      // Firebase Admin SDK requires raw FCM tokens, not Expo push tokens
-      const result = await Notifications.getDevicePushTokenAsync();
-      console.log('[Notifications] Native FCM token:', result.data);
-      return result.data as string;
-    }
-    const projectId =
-      Constants.expoConfig?.extra?.eas?.projectId ??
-      Constants.easConfig?.projectId;
-    const result = await Notifications.getExpoPushTokenAsync({ projectId });
-    console.log('[Notifications] Expo push token:', result.data);
-    return result.data;
+    // Use native device token on both platforms so Firebase Admin SDK can deliver directly.
+    // Android → raw FCM token, iOS → raw APNs token.
+    const result = await Notifications.getDevicePushTokenAsync();
+    console.log('[Notifications] Device push token:', result.data, `(${result.type})`);
+    return result.data as string;
   } catch (err) {
-    console.warn('[Notifications] Failed to get push token:', err);
+    console.warn('[Notifications] Failed to get device push token:', err);
     return null;
   }
 }
@@ -122,8 +115,9 @@ export async function registerDeviceForPushNotifications(): Promise<void> {
   try {
     const token = await registerForPushNotificationsAsync();
     if (token) {
-      await authApi.registerDevice(token);
-      console.log('[Notifications] Device registered with FCM token');
+      const platform = Platform.OS === 'ios' ? 'ios' : 'android';
+      await authApi.registerDevice(token, platform);
+      console.log(`[Notifications] Device registered (${platform})`);
     }
   } catch (err) {
     console.warn('[Notifications] Device registration failed:', err);

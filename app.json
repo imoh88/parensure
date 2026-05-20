@@ -11,8 +11,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "io.parensure.app",
+      "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": ["remote-notification", "fetch"],
         "NSLocationWhenInUseUsageDescription": "Parensure uses your location to help match you with nearby caregivers.",
         "NSCameraUsageDescription": "Parensure uses your camera to capture profile photos and documents.",
         "NSPhotoLibraryUsageDescription": "Parensure accesses your photo library to upload profile photos and documents.",

@@ -174,10 +174,10 @@ export default function AddCareReceiverScreen() {
   const initial = (name: string) => name.charAt(0).toUpperCase();
 
   const headerTitle = isCareReceiver || isAddingCaregiverToTeam ? 'Add Caregiver' : 'Add Care Receiver';
-  const pageTitle = isCareReceiver || isAddingCaregiverToTeam ? 'Find a Caregiver' : 'Find an Existing Profile';
+  const pageTitle = isCareReceiver || isAddingCaregiverToTeam ? 'Find a Caregiver' : 'Find or Create Profile';
   const pageSubtitle = isCareReceiver || isAddingCaregiverToTeam
-    ? 'Search by name or email to find and add a caregiver to the team.'
-    : "Search by email or phone number to connect to a loved one's profile.";
+    ? "Enter an email or phone number to connect to a loved one's profile."
+    : "Enter an email or phone number to connect to a loved one's profile.";
   const placeholder = isCareReceiver || isAddingCaregiverToTeam
     ? 'Search by name or email'
     : 'Search by email or phone number';

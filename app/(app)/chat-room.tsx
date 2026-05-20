@@ -19,6 +19,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const QUICK_REPLIES = ["I'm feeling good", 'Took my meds', 'Call me?'];
 
@@ -40,21 +41,20 @@ function formatDateHeader(iso: string) {
 
 export default function ChatRoomScreen() {
   const router = useRouter();
-  const { conversationId, userName, from } = useLocalSearchParams<{
+  const insets = useSafeAreaInsets();
+  const { conversationId, userName } = useLocalSearchParams<{
     conversationId: string;
     userName: string;
-    from?: string;
   }>();
   const { user } = useAuthStore();
 
   useFocusEffect(useCallback(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (from) router.push(from as any);
-      else router.back();
+      router.back();
       return true;
     });
     return () => sub.remove();
-  }, [router, from]));
+  }, [router]));
 
   const [messages, setMessages] = useState<BackendMessage[]>([]);
   const [text, setText] = useState('');
@@ -117,7 +117,7 @@ export default function ChatRoomScreen() {
     <ScreenWrapper bg="#FFFFFF" avoidKeyboard={false}>
       {/* Header */}
       <View style={s.header}>
-        <TouchableOpacity onPress={() => from ? router.push(from as any) : router.back()} style={s.backBtn} activeOpacity={0.7}>
+        <TouchableOpacity onPress={() => router.back()} style={s.backBtn} activeOpacity={0.7}>
           <ArrowLeft size={22} color="#E53935" variant="Linear" />
         </TouchableOpacity>
 
@@ -146,7 +146,7 @@ export default function ChatRoomScreen() {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior="padding"
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         {loading ? (
           <ActivityIndicator color="#E53935" style={{ flex: 1 }} />
@@ -183,7 +183,7 @@ export default function ChatRoomScreen() {
         )}
 
         {/* Quick replies + input bar pinned to bottom */}
-        <View style={s.bottomArea}>
+        <View style={[s.bottomArea, { paddingBottom: insets.bottom }]}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -196,7 +196,7 @@ export default function ChatRoomScreen() {
             </TouchableOpacity>
           ))}
         </ScrollView>
-        <View style={[s.inputBar, { paddingBottom: Platform.OS === 'ios' ? 24 : 12 }]}>
+        <View style={s.inputBar}>
           <TouchableOpacity style={s.plusBtn} activeOpacity={0.7}>
             <Text style={s.plusText}>+</Text>
           </TouchableOpacity>

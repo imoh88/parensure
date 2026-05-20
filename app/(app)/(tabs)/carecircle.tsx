@@ -452,7 +452,7 @@ function CaregiverCircle() {
       if (res.success && res.data) {
         router.push({
           pathname: '/(app)/chat-room',
-          params: { conversationId: res.data.id, userName: name, from: '/(app)/carecircle' },
+          params: { conversationId: res.data.id, userName: name },
         });
       }
     } catch {
@@ -472,7 +472,7 @@ function CaregiverCircle() {
       if (res.success && res.data) {
         router.push({
           pathname: '/(app)/chat-room',
-          params: { conversationId: res.data.id, userName: name, from: '/(app)/carecircle' },
+          params: { conversationId: res.data.id, userName: name },
         });
       }
     } catch {

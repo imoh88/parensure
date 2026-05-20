@@ -64,37 +64,62 @@ function formatDate() {
   return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 }
 
-function parseHour(t: string): number {
-  const [timePart, period = 'AM'] = t.trim().split(' ');
-  const h = parseInt((timePart ?? '8').split(':')[0] ?? '8', 10);
-  if (period === 'PM' && h !== 12) return h + 12;
-  if (period === 'AM' && h === 12) return 0;
-  return h;
+function parseTimeToDate(timeStr: string): Date | null {
+  const match = timeStr.trim().match(/^(\d+):(\d+)\s*(AM|PM)$/i);
+  if (!match) return null;
+  let h = parseInt(match[1]!, 10);
+  const m = parseInt(match[2]!, 10);
+  const p = match[3]!.toUpperCase();
+  if (p === 'PM' && h !== 12) h += 12;
+  if (p === 'AM' && h === 12) h = 0;
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
+function earliestScheduledTime(times: string[]): string {
+  if (times.length === 0) return '';
+  return times.reduce((best, cur) => {
+    const a = parseTimeToDate(best);
+    const b = parseTimeToDate(cur);
+    if (!a) return cur;
+    if (!b) return best;
+    return b < a ? cur : best;
+  });
 }
 
 function firstScheduledTime(task: TaskItem): string {
-  return task.scheduledTimes[0] ?? '';
+  return earliestScheduledTime(task.scheduledTimes);
 }
 
 function descriptionFirstLine(desc?: string) {
   return desc?.split('\n')[0] ?? '';
 }
 
+function isTimePast(timeStr: string): boolean {
+  const d = parseTimeToDate(timeStr);
+  return d ? Date.now() > d.getTime() : false;
+}
+
+function isMedMissed(med: TaskItem): boolean {
+  if (med.status === 'MISSED') return true;
+  if (med.status === 'COMPLETED') return false;
+  const earliest = earliestScheduledTime(med.scheduledTimes);
+  return earliest ? isTimePast(earliest) : false;
+}
+
 function isOverdue(task: TaskItem): boolean {
   if (task.status === 'COMPLETED') return false;
-  const t = task.scheduledTimes[0];
-  if (!t) return false;
-  const now = new Date();
-  const h = parseHour(t);
-  return h < now.getHours() || (h === now.getHours() && 0 < now.getMinutes());
+  const earliest = earliestScheduledTime(task.scheduledTimes);
+  return earliest ? isTimePast(earliest) : false;
 }
 
 function minutesOverdue(task: TaskItem): number {
-  const t = task.scheduledTimes[0];
-  if (!t) return 0;
-  const now = new Date();
-  const h = parseHour(t);
-  return (now.getHours() - h) * 60 + now.getMinutes();
+  const earliest = earliestScheduledTime(task.scheduledTimes);
+  if (!earliest) return 0;
+  const d = parseTimeToDate(earliest);
+  if (!d) return 0;
+  return Math.floor((Date.now() - d.getTime()) / 60_000);
 }
 
 // ─── Floating SOS Button ──────────────────────────────────────────────────────
@@ -238,6 +263,7 @@ function PopulatedDashboard({
   const nonMedTasks = tasks.filter(t => t.category !== 'MEDICATION');
   const todayMeds = meds; // already filtered by caller to today
   const takenCount = todayMeds.filter(m => m.status === 'COMPLETED').length;
+  const missedCount = todayMeds.filter(m => isMedMissed(m)).length;
 
   // First overdue medication
   const overdueMed = todayMeds.find(m => isOverdue(m));
@@ -246,8 +272,14 @@ function PopulatedDashboard({
   const medCompletionText = todayMeds.length > 0 ? `${takenCount}/${todayMeds.length} COMPLETED` : null;
 
   // Medication status for Health Overview card
-  const medStatus = todayMeds.length === 0 ? 'None Today' : takenCount === todayMeds.length ? 'All Taken' : 'On Track';
-  const nextMed = todayMeds.find(m => m.status !== 'COMPLETED');
+  const medStatus = todayMeds.length === 0
+    ? 'None Today'
+    : takenCount === todayMeds.length
+      ? 'All Taken'
+      : missedCount > 0
+        ? `${missedCount} Missed`
+        : 'On Track';
+  const nextMed = todayMeds.find(m => m.status !== 'COMPLETED' && !isMedMissed(m));
   const nextMedTime = nextMed ? firstScheduledTime(nextMed) : '';
 
   // Task completion
@@ -382,6 +414,7 @@ function PopulatedDashboard({
           )}
           {medPreview.map((med, idx) => {
             const taken = med.status === 'COMPLETED';
+            const missed = !taken && isMedMissed(med);
             const dosage = descriptionFirstLine(med.description);
             const time = firstScheduledTime(med);
             return (
@@ -389,8 +422,8 @@ function PopulatedDashboard({
                 {idx > 0 && <View style={p.medDivider} />}
                 <View style={p.medRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={p.medLabel}>
-                      {taken ? 'TAKEN' : time ? `NEXT DOSE: ${time}` : 'ACTIVE'}
+                    <Text style={[p.medLabel, missed && { color: '#DC2626' }]}>
+                      {taken ? 'TAKEN' : missed ? 'MISSED' : time ? `NEXT DOSE: ${time}` : 'ACTIVE'}
                     </Text>
                     <Text style={p.medName}>
                       {med.title}{dosage ? `  (${dosage})` : ''}
@@ -399,6 +432,10 @@ function PopulatedDashboard({
                   {taken ? (
                     <View style={p.takenBadge}>
                       <Text style={p.takenBadgeText}>Taken</Text>
+                    </View>
+                  ) : missed ? (
+                    <View style={p.missedBadge}>
+                      <Text style={p.missedBadgeText}>Missed</Text>
                     </View>
                   ) : (
                     <TouchableOpacity style={p.logBtn} onPress={() => onMarkTaken(med.id)} activeOpacity={0.85}>
@@ -711,6 +748,8 @@ const p = StyleSheet.create({
   logBtnText: { fontSize: 12, fontFamily: F.m.bold, color: '#E53935' },
   takenBadge: { backgroundColor: '#ECFDF5', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 6 },
   takenBadgeText: { fontSize: 12, fontFamily: F.m.semiBold, color: '#10B981' },
+  missedBadge: { backgroundColor: '#FEF2F2', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 6 },
+  missedBadgeText: { fontSize: 12, fontFamily: F.m.semiBold, color: '#DC2626' },
   viewAllMedsBtn: { marginTop: 14, backgroundColor: '#E53935', borderRadius: 50, paddingVertical: 13, alignItems: 'center' },
   viewAllMedsBtnText: { fontSize: 14, fontFamily: F.m.bold, color: '#FFF' },
 
