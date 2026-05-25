@@ -244,6 +244,15 @@ export default function MedicationScreen() {
     }
   };
 
+  const markAppointment = async (apptId: string, done: boolean) => {
+    try {
+      await caregiverApi.updateAppointmentStatus(apptId, done ? 'COMPLETED' : 'CANCELLED');
+      setAppointments(prev => prev.map(a => a.id === apptId ? { ...a, status: done ? 'COMPLETED' : 'UPCOMING' } : a));
+    } catch {
+      Alert.alert('Error', 'Could not update appointment status.');
+    }
+  };
+
   // ── Filtered items for selected date ──────────────────────────────────────
   // Medications: show all regardless of date range — a medication with a future startDate
   // is still relevant to the care receiver (shown as upcoming).
@@ -265,16 +274,22 @@ export default function MedicationScreen() {
     // For future dates always show as pending regardless of stored status
     const taken = !isFuture && item.status === 'COMPLETED';
 
-    // Checkbox is enabled only on today, and only from 15 min before the scheduled time
+    // Checkbox enabled only today, within the 15-min window before the dose time.
+    // Once the scheduled time has passed the medication is considered missed — no checkbox.
     let canCheck = false;
-    if (isToday) {
+    const isMissedLocally = item.status === 'MISSED';
+    if (isToday && !taken && !isMissedLocally) {
       const t = item.scheduledTimes?.[0];
       if (!t) {
         canCheck = true;
       } else {
         const now = new Date();
         const nowMins = now.getHours() * 60 + now.getMinutes();
-        canCheck = nowMins >= parseTimeMinutes(t) - 15;
+        const medMins = parseTimeMinutes(t);
+        if (nowMins <= medMins) {
+          canCheck = nowMins >= medMins - 15;
+        }
+        // nowMins > medMins → time passed → canCheck stays false
       }
     }
 
@@ -301,39 +316,148 @@ export default function MedicationScreen() {
   };
 
   const renderTaskCard = (item: TaskItem) => {
-    const done = item.status === 'COMPLETED';
+    const isFuture = isDateFuture(selectedDate);
+    const isToday = isDateToday(selectedDate);
+    const done = !isFuture && item.status === 'COMPLETED';
+    const missed = item.status === 'MISSED';
+
+    let canCheck = false;
+    let statusLabel = 'UPCOMING';
+    let statusColor = '#6B7280';
+    let statusBg = '#F3F4F6';
+    let borderColor = '#E5E7EB';
+
+    if (done) {
+      statusLabel = 'COMPLETED'; statusColor = '#15803D'; statusBg = '#DCFCE7'; borderColor = '#22C55E';
+    } else if (missed) {
+      statusLabel = 'MISSED'; statusColor = '#B91C1C'; statusBg = '#FEE2E2'; borderColor = '#E53935';
+    } else if (isToday) {
+      const t = item.scheduledTimes?.[0];
+      if (!t) {
+        canCheck = true; statusLabel = 'DUE NOW'; statusColor = '#92400E'; statusBg = '#FEF3C7'; borderColor = '#EAB308';
+      } else {
+        const now = new Date();
+        const nowMins = now.getHours() * 60 + now.getMinutes();
+        const taskMins = parseTimeMinutes(t);
+        if (nowMins > taskMins) {
+          // Time has passed — treat as missed, no checkbox
+          statusLabel = 'MISSED'; statusColor = '#B91C1C'; statusBg = '#FEE2E2'; borderColor = '#E53935';
+        } else if (nowMins >= taskMins - 15) {
+          canCheck = true; statusLabel = 'DUE SOON'; statusColor = '#1D4ED8'; statusBg = '#EFF6FF'; borderColor = '#3B82F6';
+        } else {
+          statusLabel = 'NOT STARTED'; statusColor = '#6B7280'; statusBg = '#F3F4F6'; borderColor = '#D1D5DB';
+        }
+      }
+    }
+
+    const time = firstTime(item);
+
     return (
-      <View key={item.id} style={s.medCard}>
-        <View style={[s.medIcon, { backgroundColor: '#EEF2FF' }]}>
-          <Text style={s.medIconEmoji}>📋</Text>
-        </View>
-        <View style={s.medInfo}>
-          <Text style={[s.medName, done && s.medNameDone]}>{item.title}</Text>
-          {item.description ? <Text style={s.medDosage}>{descriptionFirstLine(item.description)}</Text> : null}
-        </View>
-        <View style={[s.priorityBadge, item.priority === 'HIGH' && s.priorityHigh, item.priority === 'LOW' && s.priorityLow]}>
-          <Text style={s.priorityText}>{item.priority}</Text>
+      <View key={item.id} style={[s.detailCard, { borderLeftColor: borderColor }]}>
+        <View style={s.detailCardBody}>
+          <View style={s.detailCardTop}>
+            <View style={[s.statusBadge, { backgroundColor: statusBg }]}>
+              <Text style={[s.statusBadgeText, { color: statusColor }]}>{statusLabel}</Text>
+            </View>
+            <TouchableOpacity
+              style={[s.checkBtn, done && s.checkBtnDone, !canCheck && s.checkBtnLocked]}
+              onPress={() => canCheck && markTaken(item.id, !done)}
+              activeOpacity={canCheck ? 0.7 : 1}
+            >
+              {done && <Text style={s.checkMark}>✓</Text>}
+              {!canCheck && !done && <Text style={s.lockIcon}>🔒</Text>}
+            </TouchableOpacity>
+          </View>
+          <Text style={[s.detailCardTitle, done && s.medNameDone]}>{item.title}</Text>
+          {item.description ? <Text style={s.detailCardSub}>{descriptionFirstLine(item.description)}</Text> : null}
+          <View style={s.detailCardMeta}>
+            {time ? <Text style={s.detailMetaChip}>🕒 {time}</Text> : null}
+            {item.category ? <Text style={s.detailMetaChip}>📋 {item.category}</Text> : null}
+            {item.priority && item.priority !== 'NORMAL' ? (
+              <Text style={[s.detailMetaChip, item.priority === 'HIGH' && s.metaChipHigh]}>
+                {item.priority === 'HIGH' ? '⚠️ HIGH' : item.priority}
+              </Text>
+            ) : null}
+          </View>
         </View>
       </View>
     );
   };
 
-  const renderApptCard = (item: AppointmentItem) => (
-    <View key={item.id} style={s.medCard}>
-      <View style={[s.medIcon, { backgroundColor: '#FFF7ED' }]}>
-        <Text style={s.medIconEmoji}>🗓</Text>
+  const renderApptCard = (item: AppointmentItem) => {
+    const isFuture = isDateFuture(selectedDate);
+    const isToday = isDateToday(selectedDate);
+    const done = !isFuture && item.status === 'COMPLETED';
+    const cancelled = item.status === 'CANCELLED';
+
+    let canCheck = false;
+    let statusLabel = 'UPCOMING';
+    let statusColor = '#1D4ED8';
+    let statusBg = '#EFF6FF';
+    let borderColor = '#3B82F6';
+
+    if (done) {
+      statusLabel = 'COMPLETED'; statusColor = '#15803D'; statusBg = '#DCFCE7'; borderColor = '#22C55E';
+    } else if (cancelled) {
+      statusLabel = 'CANCELLED'; statusColor = '#6B7280'; statusBg = '#F3F4F6'; borderColor = '#D1D5DB';
+    } else if (isToday) {
+      const t = item.scheduledTimes?.[0];
+      if (!t) {
+        canCheck = true; statusLabel = 'TODAY';
+        statusColor = '#92400E'; statusBg = '#FEF3C7';
+        borderColor = item.priority === 'HIGH' ? '#E53935' : '#EAB308';
+      } else {
+        const now = new Date();
+        const nowMins = now.getHours() * 60 + now.getMinutes();
+        const apptMins = parseTimeMinutes(t);
+        if (nowMins > apptMins) {
+          // Time has passed — treat as missed, no checkbox
+          statusLabel = 'MISSED'; statusColor = '#B91C1C'; statusBg = '#FEE2E2'; borderColor = '#E53935';
+        } else if (nowMins >= apptMins - 15) {
+          canCheck = true; statusLabel = 'DUE NOW';
+          statusColor = '#92400E'; statusBg = '#FEF3C7';
+          borderColor = item.priority === 'HIGH' ? '#E53935' : '#EAB308';
+        } else {
+          borderColor = item.priority === 'HIGH' ? '#E53935' : '#3B82F6';
+        }
+      }
+    } else if (item.priority === 'HIGH') {
+      borderColor = '#E53935';
+    }
+
+    const time = firstTime(item);
+
+    return (
+      <View key={item.id} style={[s.detailCard, { borderLeftColor: borderColor }]}>
+        <View style={s.detailCardBody}>
+          <View style={s.detailCardTop}>
+            <View style={[s.statusBadge, { backgroundColor: statusBg }]}>
+              <Text style={[s.statusBadgeText, { color: statusColor }]}>{statusLabel}</Text>
+            </View>
+            <TouchableOpacity
+              style={[s.checkBtn, done && s.checkBtnDone, !canCheck && s.checkBtnLocked]}
+              onPress={() => canCheck && markAppointment(item.id, !done)}
+              activeOpacity={canCheck ? 0.7 : 1}
+            >
+              {done && <Text style={s.checkMark}>✓</Text>}
+              {!canCheck && !done && <Text style={s.lockIcon}>🔒</Text>}
+            </TouchableOpacity>
+          </View>
+          <Text style={[s.detailCardTitle, done && s.medNameDone]}>{item.title}</Text>
+          <View style={s.detailCardMeta}>
+            {time ? <Text style={s.detailMetaChip}>🕒 {time}</Text> : null}
+            {item.providerName ? <Text style={s.detailMetaChip}>👨‍⚕️ {item.providerName}</Text> : null}
+            {item.location ? <Text style={s.detailMetaChip}>📍 {item.location}</Text> : null}
+            {item.priority && item.priority !== 'NORMAL' ? (
+              <Text style={[s.detailMetaChip, item.priority === 'HIGH' && s.metaChipHigh]}>
+                {item.priority === 'HIGH' ? '⚠️ HIGH' : item.priority}
+              </Text>
+            ) : null}
+          </View>
+        </View>
       </View>
-      <View style={s.medInfo}>
-        <Text style={s.medName}>{item.title}</Text>
-        <Text style={s.medDosage}>
-          {[item.providerName, item.location, firstTime(item)].filter(Boolean).join(' • ')}
-        </Text>
-      </View>
-      <View style={[s.priorityBadge, item.status === 'COMPLETED' && s.priorityLow]}>
-        <Text style={s.priorityText}>{item.status}</Text>
-      </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <ScreenWrapper bg="#F5F5F7">
@@ -500,7 +624,9 @@ export default function MedicationScreen() {
                 {appts.length === 0 ? (
                   <EmptyState message="No appointments scheduled for this day." onAdd={() => router.push('/(app)/add-appointment')} />
                 ) : (
-                  appts.map(renderApptCard)
+                  <View style={{ gap: 8, marginTop: 12 }}>
+                    {appts.map(renderApptCard)}
+                  </View>
                 )}
               </>
             )}
@@ -650,4 +776,25 @@ const s = StyleSheet.create({
   priorityHigh: { backgroundColor: '#FEE2E2' },
   priorityLow: { backgroundColor: '#DCFCE7' },
   priorityText: { fontSize: 11, fontFamily: F.m.semiBold, color: '#374151' },
+
+  // Detail card (tasks & appointments)
+  detailCard: {
+    backgroundColor: '#FFF', borderRadius: 14,
+    borderLeftWidth: 4, borderLeftColor: '#D1D5DB',
+    marginBottom: 0,
+    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6,
+    shadowOffset: { width: 0, height: 1 }, elevation: 1,
+  },
+  detailCardBody: { padding: 14, gap: 6 },
+  detailCardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 50 },
+  statusBadgeText: { fontSize: 11, fontFamily: F.m.bold, letterSpacing: 0.3 },
+  detailCardTitle: { fontSize: 15, fontFamily: F.m.semiBold, color: '#111' },
+  detailCardSub: { fontSize: 12, fontFamily: F.i.regular, color: '#6B7280' },
+  detailCardMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
+  detailMetaChip: {
+    fontSize: 12, fontFamily: F.m.semiBold, color: '#6B7280',
+    backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 50,
+  },
+  metaChipHigh: { backgroundColor: '#FEE2E2', color: '#B91C1C' },
 });

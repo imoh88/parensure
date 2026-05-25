@@ -204,6 +204,19 @@ export default function AddMedicationManualScreen() {
   const [saving, setSaving] = useState(false);
 
   const addTime = () => {
+    const today = new Date();
+    const isStartToday =
+      !startDate || startDate.toDateString() === today.toDateString();
+
+    if (isStartToday) {
+      const selected = new Date();
+      selected.setHours(currentTime.getHours(), currentTime.getMinutes(), 0, 0);
+      if (selected <= today) {
+        Alert.alert('Invalid Time', 'That time has already passed. Please select a future time for today.');
+        return;
+      }
+    }
+
     const label = formatTimeLabel(currentTime);
     if (!scheduledTimes.find((t) => formatTimeLabel(t.date) === label)) {
       setScheduledTimes((prev) => [...prev, { date: new Date(currentTime) }]);

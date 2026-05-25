@@ -65,13 +65,21 @@ function formatDate() {
 }
 
 function parseTimeToDate(timeStr: string): Date | null {
-  const match = timeStr.trim().match(/^(\d+):(\d+)\s*(AM|PM)$/i);
-  if (!match) return null;
-  let h = parseInt(match[1]!, 10);
-  const m = parseInt(match[2]!, 10);
-  const p = match[3]!.toUpperCase();
-  if (p === 'PM' && h !== 12) h += 12;
-  if (p === 'AM' && h === 12) h = 0;
+  const s = timeStr.trim();
+  const ampm = s.match(/^(\d+):(\d+)\s*(AM|PM)$/i);
+  let h: number, m: number;
+  if (ampm) {
+    h = parseInt(ampm[1]!, 10);
+    m = parseInt(ampm[2]!, 10);
+    const period = ampm[3]!.toUpperCase();
+    if (period === 'PM' && h !== 12) h += 12;
+    if (period === 'AM' && h === 12) h = 0;
+  } else {
+    const parts = s.split(':');
+    h = parseInt(parts[0] ?? '0', 10);
+    m = parseInt(parts[1] ?? '0', 10);
+    if (isNaN(h) || isNaN(m)) return null;
+  }
   const d = new Date();
   d.setHours(h, m, 0, 0);
   return d;
@@ -469,14 +477,20 @@ function PopulatedDashboard({
           {taskPreview.map((item: any) => {
             const isAppt = item.category === '__appt__';
             const done = item.status === 'COMPLETED' || item.status === 'DONE';
+            const missed = !done && (item.status === 'MISSED' || (item.scheduledTimes?.[0] ? isTimePast(item.scheduledTimes[0]) : false));
             const time = item.scheduledTimes?.[0] ?? '';
+            const statusLabel = done ? 'Done' : missed ? 'Missed' : 'Upcoming';
             const sub = isAppt
-              ? `${time}${item.providerName ? ' · ' + item.providerName : ''}`
-              : `${time ? time + ' · ' : ''}${done ? 'Done' : 'Upcoming'}`;
+              ? `${time}${item.providerName ? ' · ' + item.providerName : ''}${missed ? ' · Missed' : ''}`
+              : `${time ? time + ' · ' : ''}${statusLabel}`;
             return (
-              <View key={item.id} style={[p.taskRow, !done && p.taskRowUpcoming]}>
+              <View key={item.id} style={[p.taskRow, !done && (missed ? p.taskRowMissed : p.taskRowUpcoming)]}>
                 {done ? (
                   <TickCircle size={24} color="#10B981" variant="Bold" />
+                ) : missed ? (
+                  <View style={p.taskMissedIcon}>
+                    <TickCircle size={22} color="#9CA3AF" variant="Linear" />
+                  </View>
                 ) : (
                   <View style={p.taskUpcomingIcon}>
                     {isAppt
@@ -486,8 +500,8 @@ function PopulatedDashboard({
                   </View>
                 )}
                 <View style={{ flex: 1 }}>
-                  <Text style={done ? p.taskNameDone : p.taskName}>{item.title}</Text>
-                  <Text style={p.taskMeta}>{sub}</Text>
+                  <Text style={done ? p.taskNameDone : missed ? p.taskNameMissed : p.taskName}>{item.title}</Text>
+                  <Text style={[p.taskMeta, missed && { color: '#DC2626' }]}>{sub}</Text>
                 </View>
               </View>
             );
@@ -768,8 +782,11 @@ const p = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 }, elevation: 1,
   },
   taskRowUpcoming: { borderLeftWidth: 4, borderLeftColor: '#E53935', paddingLeft: 10 },
+  taskRowMissed: { borderLeftWidth: 4, borderLeftColor: '#9CA3AF', paddingLeft: 10 },
   taskUpcomingIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#FEF2F2', alignItems: 'center', justifyContent: 'center' },
+  taskMissedIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
   taskName: { fontSize: 15, fontFamily: F.m.semiBold, color: '#111' },
   taskNameDone: { fontSize: 15, fontFamily: F.m.semiBold, color: '#9CA3AF', textDecorationLine: 'line-through' },
+  taskNameMissed: { fontSize: 15, fontFamily: F.m.semiBold, color: '#6B7280', textDecorationLine: 'line-through' },
   taskMeta: { fontSize: 12, fontFamily: F.i.regular, color: '#9CA3AF', marginTop: 2 },
 });

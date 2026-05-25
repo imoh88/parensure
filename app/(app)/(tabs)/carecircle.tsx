@@ -139,12 +139,12 @@ function CareReceiverCircle() {
           <View style={cr.sectionWrap}>
             <View style={cr.sectionHeader}>
               <Text style={cr.sectionTitle}>Care Circle</Text>
-              <TouchableOpacity
+              {/* <TouchableOpacity
                 onPress={() => router.push('/(app)/chat')}
                 activeOpacity={0.7}
               >
                 <Text style={cr.sectionActionText}>Manage</Text>
-              </TouchableOpacity>
+              </TouchableOpacity> */}
             </View>
 
             {invites.length === 0 ? (

@@ -454,15 +454,24 @@ export default function SnapshotScreen() {
                   const isMarking = markingId === medId;
                   return (
                     <View key={medId} style={[s.medCard, done && s.medCardDone]}>
-                      <View style={[s.medIconWrap, done && s.medIconDone]}>
-                        <Hospital size={18} color={done ? '#D1D5DB' : '#E53935'} variant="Linear" />
-                      </View>
-                      <View style={s.medInfo}>
-                        <Text style={[s.medName, done && s.medNameDone]}>{med.title}</Text>
-                        {med.description ? (
-                          <Text style={s.medDetail} numberOfLines={1}>{med.description}</Text>
-                        ) : null}
-                      </View>
+                      <TouchableOpacity
+                        style={s.medTappable}
+                        activeOpacity={0.7}
+                        onPress={() => {
+                          taskCache.set(med);
+                          router.push({ pathname: '/(app)/task-detail', params: { taskId: medId } });
+                        }}
+                      >
+                        <View style={[s.medIconWrap, done && s.medIconDone]}>
+                          <Hospital size={18} color={done ? '#D1D5DB' : '#E53935'} variant="Linear" />
+                        </View>
+                        <View style={s.medInfo}>
+                          <Text style={[s.medName, done && s.medNameDone]}>{med.title}</Text>
+                          {med.description ? (
+                            <Text style={s.medDetail} numberOfLines={1}>{med.description}</Text>
+                          ) : null}
+                        </View>
+                      </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => { if (!done && !isMarking) handleToggleTask(medId); }}
                         disabled={done || !!isMarking}
@@ -741,6 +750,7 @@ const s = StyleSheet.create({
     width: 26, height: 26, borderRadius: 13,
     borderWidth: 2, borderColor: '#D1D5DB',
   },
+  medTappable: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
   medCheckDone: {
     width: 26, height: 26, borderRadius: 13,
     borderWidth: 2, borderColor: '#FCA5A5',

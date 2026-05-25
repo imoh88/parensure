@@ -175,6 +175,11 @@ export const caregiverApi = {
     return response.data;
   },
 
+  updateAppointmentStatus: async (appointmentId: string, status: 'COMPLETED' | 'CANCELLED'): Promise<ApiResponse<any>> => {
+    const response = await apiClient.patch(`/appointment/${appointmentId}`, { status });
+    return response.data;
+  },
+
   getActivityLog: async (careReceiverId: string, limit = 20): Promise<ApiResponse<any[]>> => {
     const response = await apiClient.get(`/caregiver/care-receivers/${careReceiverId}/activity`, { params: { limit } });
     return response.data;

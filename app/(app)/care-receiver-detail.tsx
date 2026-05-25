@@ -204,11 +204,18 @@ export default function CareReceiverDetailScreen() {
         ) : null}
 
         {/* Emergency Contact */}
-        {profile.emergencyContact ? (
-          <Card title="Emergency Contact">
-            <InfoRow icon="alert-circle-outline" label="Contact" value={profile.emergencyContact} />
-          </Card>
-        ) : null}
+        {profile.emergencyContact ? (() => {
+          let ec: { name?: string; email?: string; phone?: string; relationship?: string } = {};
+          try { ec = typeof profile.emergencyContact === 'string' ? JSON.parse(profile.emergencyContact) : profile.emergencyContact; } catch {}
+          return (
+            <Card title="Emergency Contact">
+              <InfoRow icon="person-outline"   label="Name"         value={ec.name} />
+              <InfoRow icon="heart-outline"     label="Relationship" value={ec.relationship} />
+              <InfoRow icon="call-outline"      label="Phone"        value={ec.phone} />
+              <InfoRow icon="mail-outline"      label="Email"        value={ec.email} />
+            </Card>
+          );
+        })() : null}
       </ScrollView>
     </View>
   );

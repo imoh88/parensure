@@ -4,19 +4,13 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 Notifications.setNotificationHandler({
-  handleNotification: async (notification) => {
-    const data = notification.request.content.data as Record<string, string> | undefined;
-    const isSos = data?.['type'] === 'SOS_TRIGGERED' || data?.['type'] === 'FALL_DETECTED';
-    // For SOS, suppress expo's notification — ParensureMessagingService already shows
-    // a non-swipeable foreground service notification instead.
-    return {
-      shouldShowAlert: !isSos,
-      shouldPlaySound: !isSos,
-      shouldSetBadge: !isSos,
-      shouldShowBanner: !isSos,
-      shouldShowList: !isSos,
-    };
-  },
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
 });
 
 export async function setupNotificationCategories() {
@@ -100,13 +94,23 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   }
 
   try {
-    // Use native device token on both platforms so Firebase Admin SDK can deliver directly.
-    // Android → raw FCM token, iOS → raw APNs token.
-    const result = await Notifications.getDevicePushTokenAsync();
-    console.log('[Notifications] Device push token:', result.data, `(${result.type})`);
-    return result.data as string;
+    if (Platform.OS === 'android') {
+      // Android: native FCM token — Firebase Admin SDK can send directly
+      const result = await Notifications.getDevicePushTokenAsync();
+      console.log('[Notifications] Android FCM token:', result.data);
+      return result.data as string;
+    } else {
+      // iOS: Expo push token — Expo routes to APNs automatically
+      // (Firebase Admin SDK cannot accept raw APNs tokens)
+      const projectId =
+        Constants.expoConfig?.extra?.eas?.projectId ??
+        Constants.easConfig?.projectId;
+      const result = await Notifications.getExpoPushTokenAsync({ projectId });
+      console.log('[Notifications] iOS Expo push token:', result.data);
+      return result.data;
+    }
   } catch (err) {
-    console.warn('[Notifications] Failed to get device push token:', err);
+    console.warn('[Notifications] Failed to get push token:', err);
     return null;
   }
 }
