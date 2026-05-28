@@ -13,7 +13,7 @@ import {
 const ITEMS = [
   'Create task',
   'Add Appointment',
-  'Add medication',
+  'Add Medication',
   'Add Care Recipient',
   'Add Care Giver',
 ] as const;

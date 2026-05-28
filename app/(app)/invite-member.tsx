@@ -20,13 +20,42 @@ import {
   View,
 } from 'react-native';
 
-type CaregiverRole =
+type InviteRole =
+  | 'CARE_RECEIVER'
   | 'PROFESSIONAL_CAREGIVER'
   | 'FAMILY_OBSERVER'
   | 'FRIEND_NEIGHBOR'
   | 'EMERGENCY_CONTACT';
 
-const ROLES: { key: CaregiverRole; label: string; description: string }[] = [
+const CAREGIVER_ROLES: { key: InviteRole; label: string; description: string }[] = [
+  {
+    key: 'CARE_RECEIVER',
+    label: 'Care Receiver',
+    description: 'Can track their own schedule, check off daily tasks, and view health metrics.',
+  },
+  {
+    key: 'PROFESSIONAL_CAREGIVER',
+    label: 'Professional Caregiver',
+    description: 'Supports daily care by completing assigned tasks and updating care information.',
+  },
+  {
+    key: 'FAMILY_OBSERVER',
+    label: 'Family Observer',
+    description: 'Can view care updates, tasks, and health information, but cannot make changes.',
+  },
+  {
+    key: 'FRIEND_NEIGHBOR',
+    label: 'Friend/Neighbor',
+    description: 'Can help with specific tasks and check-ins when invited.',
+  },
+  {
+    key: 'EMERGENCY_CONTACT',
+    label: 'Emergency Contact',
+    description: 'Will only be notified in urgent or emergency situations.',
+  },
+];
+
+const CARE_RECEIVER_ROLES: { key: InviteRole; label: string; description: string }[] = [
   {
     key: 'PROFESSIONAL_CAREGIVER',
     label: 'Professional Caregiver',
@@ -59,7 +88,10 @@ export default function InviteMemberScreen() {
     from?: string;
   }>();
 
-  const [selectedRole, setSelectedRole] = useState<CaregiverRole>('PROFESSIONAL_CAREGIVER');
+  const roles = isCareReceiver ? CARE_RECEIVER_ROLES : CAREGIVER_ROLES;
+  const [selectedRole, setSelectedRole] = useState<InviteRole>(
+    isCareReceiver ? 'PROFESSIONAL_CAREGIVER' : 'CARE_RECEIVER'
+  );
   const [email, setEmail] = useState(prefillEmail ?? '');
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -138,7 +170,7 @@ export default function InviteMemberScreen() {
           {/* Role selector — always visible */}
           <Text style={s.sectionLabel}>Select Role</Text>
           <View style={s.roleList}>
-            {ROLES.map((role) => {
+            {roles.map((role) => {
               const active = selectedRole === role.key;
               return (
                 <TouchableOpacity

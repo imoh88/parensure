@@ -249,7 +249,7 @@ const s = StyleSheet.create({
     elevation: 10,
   },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: '#000', zIndex: 10 },
-  optionWrapper: { position: 'absolute', bottom: 0, alignSelf: 'center', zIndex: 20 },
+  optionWrapper: { position: 'absolute', bottom: 0, left: 0, right: 0, alignItems: 'center', zIndex: 20 },
   option: {
     backgroundColor: '#FFF', paddingHorizontal: 24, paddingVertical: 13,
     borderRadius: 12,

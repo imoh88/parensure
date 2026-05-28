@@ -9,13 +9,14 @@ import { ArrowLeft, Building, Calendar, Clock, Hospital, Moon, Profile, Sun1, Ti
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import Svg, { Circle, Path } from 'react-native-svg';
+import Svg, { Circle } from 'react-native-svg';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const TAB_LABELS = ['Tasks', 'Medications', 'Appointments'] as const;
@@ -172,32 +173,27 @@ function CircularGauge({ pct }: { pct: number }) {
   );
 }
 
-// ─── Mini semicircle gauge (medications) ─────────────────────────────────────
+
+// ─── Mini circular gauge (medications) ───────────────────────────────────────
 function MiniGauge({ taken, total }: { taken: number; total: number }) {
-  const size = 64, sw = 7;
+  const size = 64, sw = 6;
   const r = (size - sw) / 2;
-  const cx = size / 2, cy = size / 2;
+  const circ = 2 * Math.PI * r;
   const pct = total > 0 ? taken / total : 0;
-  const sweepDeg = 180 * pct;
-  const rad = (d: number) => (d * Math.PI) / 180;
-  const sx = cx - r, sy = cy;
-  const ex = cx + r, ey = cy;
-  const endAngle = 180 + sweepDeg;
-  const px = cx + r * Math.cos(rad(endAngle));
-  const py = cy + r * Math.sin(rad(endAngle));
-  const laf = sweepDeg > 180 ? 1 : 0;
+  const offset = circ * (1 - pct);
   return (
-    <View style={{ alignItems: 'center' }}>
-      <Svg width={size} height={size / 2 + sw / 2 + 2}>
-        <Path d={`M ${sx} ${sy} A ${r} ${r} 0 0 1 ${ex} ${ey}`} stroke="#E5E7EB" strokeWidth={sw} fill="none" strokeLinecap="round" />
-        {pct > 0 && (
-          <Path
-            d={`M ${sx} ${sy} A ${r} ${r} 0 ${laf} 1 ${px.toFixed(2)} ${py.toFixed(2)}`}
-            stroke="#E53935" strokeWidth={sw} fill="none" strokeLinecap="round"
-          />
-        )}
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg width={size} height={size} style={{ position: 'absolute' }}>
+        <Circle cx={size / 2} cy={size / 2} r={r} stroke="#E5E7EB" strokeWidth={sw} fill="none" />
+        <Circle
+          cx={size / 2} cy={size / 2} r={r}
+          stroke="#E53935" strokeWidth={sw} fill="none"
+          strokeDasharray={circ} strokeDashoffset={offset}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
       </Svg>
-      <Text style={g.miniGaugeLabel}>{taken}/{total}</Text>
+      <Text style={{ fontSize: 14, fontFamily: F.m.bold, color: '#111' }}>{taken}/{total}</Text>
     </View>
   );
 }
@@ -421,9 +417,17 @@ export default function SnapshotScreen() {
       <>
         {/* Progress card */}
         <View style={s.progressCard}>
-          <View>
-            <Text style={s.progressLabel}>TODAY'S PROGRESS</Text>
-            <Text style={s.progressValue}>{takenCount} of {total} Taken</Text>
+          <Image
+            source={require('@/assets/images/parensure-logo.png')}
+            style={s.progressWatermark}
+            resizeMode="contain"
+          />
+          <View style={s.progressLeft}>
+            <View style={s.progressAccent} />
+            <View>
+              <Text style={s.progressLabel}>TODAY'S PROGRESS</Text>
+              <Text style={s.progressValue}>{takenCount} of {total} Taken</Text>
+            </View>
           </View>
           <MiniGauge taken={takenCount} total={total} />
         </View>
@@ -452,8 +456,10 @@ export default function SnapshotScreen() {
                   const medId = med._id ?? med.id;
                   const done = med.status === 'COMPLETED';
                   const isMarking = markingId === medId;
+                  const subtitle = [med.description, earliestTime(med.scheduledTimes ?? [])]
+                    .filter(Boolean).join(' • ');
                   return (
-                    <View key={medId} style={[s.medCard, done && s.medCardDone]}>
+                    <View key={medId} style={s.medCard}>
                       <TouchableOpacity
                         style={s.medTappable}
                         activeOpacity={0.7}
@@ -467,8 +473,8 @@ export default function SnapshotScreen() {
                         </View>
                         <View style={s.medInfo}>
                           <Text style={[s.medName, done && s.medNameDone]}>{med.title}</Text>
-                          {med.description ? (
-                            <Text style={s.medDetail} numberOfLines={1}>{med.description}</Text>
+                          {subtitle ? (
+                            <Text style={s.medDetail} numberOfLines={1}>{subtitle}</Text>
                           ) : null}
                         </View>
                       </TouchableOpacity>
@@ -481,7 +487,7 @@ export default function SnapshotScreen() {
                           <ActivityIndicator size="small" color="#E53935" />
                         ) : done ? (
                           <View style={s.medCheckDone}>
-                            <TickCircle size={14} color="#E53935" variant="Bold" />
+                            <TickCircle size={16} color="#FFF" variant="Bold" />
                           </View>
                         ) : (
                           <View style={s.medCheckbox} />
@@ -590,7 +596,6 @@ export default function SnapshotScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const g = StyleSheet.create({
   gaugePct:      { position: 'absolute', fontSize: 15, fontFamily: F.m.bold, color: '#111', alignSelf: 'center', top: 28 },
-  miniGaugeLabel:{ fontSize: 14, fontFamily: F.m.bold, color: '#111', marginTop: 2 },
 });
 
 const s = StyleSheet.create({
@@ -680,12 +685,17 @@ const s = StyleSheet.create({
   progressCard: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     marginHorizontal: 20, marginBottom: 20,
-    backgroundColor: '#FFF', borderRadius: 14, padding: 16,
-    borderLeftWidth: 5, borderLeftColor: '#E53935',
-    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 }, elevation: 2,
+    backgroundColor: '#FFF', borderRadius: 14, padding: 16, overflow: 'hidden',
+    shadowColor: '#000', shadowOpacity: 0.07, shadowRadius: 18.3,
+    shadowOffset: { width: 0, height: 13 }, elevation: 6,
   },
-  progressLabel: { fontSize: 10, fontFamily: F.m.bold, color: '#E53935', letterSpacing: 0.8, marginBottom: 4 },
+  progressLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  progressAccent: { width: 8, height: 46, backgroundColor: '#E53935', borderRadius: 6 },
+  progressWatermark: {
+    position: 'absolute', right: -30, top: '50%', marginTop: -20,
+    width: 170, height: 130, opacity: 0.06,
+  },
+  progressLabel: { fontSize: 10, fontFamily: F.m.bold, color: '#15151599', letterSpacing: 0.8, marginBottom: 4 },
   progressValue: { fontSize: 16, fontFamily: F.m.bold, color: '#111' },
 
   // ── Medications: month + calendar ──
@@ -697,7 +707,7 @@ const s = StyleSheet.create({
   dateItem: {
     flex: 1, paddingVertical: 10, borderRadius: 14,
     backgroundColor: '#F3F4F6', alignItems: 'center', gap: 4,
-    borderWidth: 1, borderColor: '#F0F0F0',
+    borderWidth: 1, borderColor: '#86868633',
   },
   dateItemActive: { backgroundColor: '#E53935', borderColor: '#E53935' },
   dateDayLabel: { fontSize: 12, fontFamily: F.m.medium, color: '#9CA3AF' },
@@ -730,31 +740,32 @@ const s = StyleSheet.create({
   medPeriodLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   medPeriodLabel: { fontSize: 16, fontFamily: F.m.bold, color: '#111' },
   medPeriodTime: { fontSize: 13, fontFamily: F.i.regular, color: '#9CA3AF' },
-  medGroup: { backgroundColor: '#F3F4F6', borderRadius: 16, overflow: 'hidden' },
+  medGroup: { gap: 10 },
   medCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 14, paddingVertical: 14,
-    borderBottomWidth: 1, borderBottomColor: '#E5E7EB',
+    backgroundColor: '#F5F5F5', borderRadius: 16,
+    // shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8,
+    // shadowOffset: { width: 0, height: 2 }, elevation: 2,
   },
-  medCardDone: { opacity: 0.5 },
   medIconWrap: {
-    width: 38, height: 38, borderRadius: 10,
-    backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center',
+    width: 42, height: 42, borderRadius: 12,
+    backgroundColor: '#F2EDEA', alignItems: 'center', justifyContent: 'center',
   },
   medIconDone: { backgroundColor: '#F3F4F6' },
-  medInfo: { flex: 1, gap: 2 },
-  medName: { fontSize: 14, fontFamily: F.m.semiBold, color: '#111' },
+  medInfo: { flex: 1, gap: 3 },
+  medName: { fontSize: 15, fontFamily: F.m.semiBold, color: '#111' },
   medNameDone: { color: '#9CA3AF' },
   medDetail: { fontSize: 12, fontFamily: F.i.regular, color: '#9CA3AF' },
   medCheckbox: {
-    width: 26, height: 26, borderRadius: 13,
-    borderWidth: 2, borderColor: '#D1D5DB',
+    width: 30, height: 30, borderRadius: 15,
+    borderWidth: 1, borderColor: '#E53935',
   },
   medTappable: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
   medCheckDone: {
-    width: 26, height: 26, borderRadius: 13,
-    borderWidth: 2, borderColor: '#FCA5A5',
-    alignItems: 'center', justifyContent: 'center', backgroundColor: '#FEF2F2',
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: '#E53935',
+    alignItems: 'center', justifyContent: 'center',
   },
 
   // ── Appointments ──
