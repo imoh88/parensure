@@ -13,6 +13,24 @@ export const apiClient: AxiosInstance = axios.create({
   },
 });
 
+/**
+ * Returns a one-off axios config object pre-loaded with the current token and
+ * the X-Active-Role header. Use this when a CAREGIVER wants to act as their
+ * linked CARE_RECEIVER profile.
+ *
+ * Usage:
+ *   await apiClient.get('/task/mine', await withRole('CARE_RECEIVER'))
+ */
+export async function withRole(role: 'CARE_RECEIVER' | 'CAREGIVER' | 'FIRM_ADMIN') {
+  const token = await storage.getToken();
+  return {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      'X-Active-Role': role,
+    },
+  };
+}
+
 // Request interceptor to add token and log requests
 apiClient.interceptors.request.use(
   async (config) => {

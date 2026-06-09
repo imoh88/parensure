@@ -1,6 +1,7 @@
 import ScreenWrapper from '@/components/ui/ScreenWrapper';
 import { careReceiverApi } from '@/lib/api/careReceiver';
 import { caregiverApi } from '@/lib/api/caregiver';
+import { apiClient } from '@/lib/api/client';
 import { chatApi } from '@/lib/api/chat';
 import { F } from '@/lib/fonts';
 import { useAuthStore } from '@/lib/store/authStore';
@@ -32,8 +33,8 @@ function CareReceiverCircle() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuthStore();
-  const { invites, setInvites, isStale } = useCareCircleStore();
-  const [loading, setLoading] = useState(invites.length === 0);
+  const { invites, setInvites, isStale, lastFetchedAt: circleFetchedAt } = useCareCircleStore();
+  const [loading, setLoading] = useState(circleFetchedAt === null);
   const [refreshing, setRefreshing] = useState(false);
   const [openingChat, setOpeningChat] = useState<string | null>(null);
 
@@ -47,10 +48,12 @@ function CareReceiverCircle() {
 
   useFocusEffect(
     useCallback(() => {
-      if (isStale()) {
-        setLoading(invites.length === 0); // show spinner only on first load
-        fetchInvites().finally(() => setLoading(false));
+      if (!isStale()) {
+        setLoading(false); // data is fresh — never leave spinner running
+        return;
       }
+      setLoading(invites.length === 0);
+      fetchInvites().finally(() => setLoading(false));
     }, [fetchInvites, isStale, invites.length])
   );
 
@@ -341,17 +344,26 @@ function PermRow({
 function CaregiverCircle() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user } = useAuthStore();
+  const { user, selfCareReceiverId } = useAuthStore();
   const {
-    bookings, setBookings, isStale,
+    bookings, setBookings, isStale, lastFetchedAt: bookingsFetchedAt,
     getTeam, setTeam: storeSetTeam, isTeamStale,
   } = useCaregiverDashboardStore();
 
-  const [loadingBookings, setLoadingBookings] = useState(bookings.length === 0);
+  const hasSelfProfile =
+    selfCareReceiverId !== null ||
+    user?.linkedAccountTypes?.includes('CARE_RECEIVER') === true;
+
+  const [loadingBookings, setLoadingBookings] = useState(bookingsFetchedAt === null);
   const [refreshing, setRefreshing] = useState(false);
 
   // selectedIdx: 0 = "Me", 1..n = bookings[idx-1]
   const [selectedIdx, setSelectedIdx] = useState(0);
+
+  // Self-care summary (visible when "Me" is selected and hasSelfProfile)
+  const [selfTasks, setSelfTasks] = useState<any[]>([]);
+  const [selfAppointments, setSelfAppointments] = useState<any[]>([]);
+  const [selfLoading, setSelfLoading] = useState(false);
 
   // Per-selected-receiver state
   const [team, setTeam] = useState<TeamMember[]>([]);
@@ -365,6 +377,27 @@ function CaregiverCircle() {
   const [activityLog, setActivityLog] = useState<any[]>([]);
   const [loadingActivity, setLoadingActivity] = useState(false);
 
+  const fetchSelfData = useCallback(async () => {
+    if (!hasSelfProfile) return;
+    setSelfLoading(true);
+    try {
+      // CAREGIVER and CARE_RECEIVER both have VIEW_OWN_TASKS / VIEW_OWN_APPOINTMENTS —
+      // no X-Active-Role switch needed.
+      const [tRes, aRes] = await Promise.all([
+        apiClient.get('/task/mine'),
+        apiClient.get('/appointment/mine'),
+      ]);
+      if (tRes.data?.success) setSelfTasks(tRes.data.data ?? []);
+      if (aRes.data?.success) setSelfAppointments(aRes.data.data ?? []);
+    } catch {}
+    finally { setSelfLoading(false); }
+  }, [hasSelfProfile]);
+
+  // Fetch self-care data when "Me" is selected
+  useEffect(() => {
+    if (selectedIdx === 0 && hasSelfProfile) fetchSelfData();
+  }, [selectedIdx, hasSelfProfile, fetchSelfData]);
+
   const fetchBookings = useCallback(async (force = false) => {
     if (!force && !isStale()) return;
     try {
@@ -375,10 +408,12 @@ function CaregiverCircle() {
 
   useFocusEffect(
     useCallback(() => {
-      if (isStale()) {
-        setLoadingBookings(bookings.length === 0);
-        fetchBookings().finally(() => setLoadingBookings(false));
+      if (!isStale()) {
+        setLoadingBookings(false); // data is fresh — never leave spinner running
+        return;
       }
+      setLoadingBookings(bookings.length === 0);
+      fetchBookings().finally(() => setLoadingBookings(false));
     }, [fetchBookings, isStale, bookings.length])
   );
 
@@ -532,7 +567,7 @@ function CaregiverCircle() {
         </View>
         <TouchableOpacity
           style={s.messagesBtn}
-          // onPress={() => router.push('/(app)/chat')}
+          onPress={() => router.push('/(app)/manage-self')}
           activeOpacity={0.8}
         >
           <Text style={[s.messagesBtnText]}>Manage</Text>
@@ -630,23 +665,93 @@ function CaregiverCircle() {
 
           <View style={s.divider} />
 
-          {/* ── "Me" selected: show empty / profile prompt ── */}
+          {/* ── "Me" selected ── */}
           {selectedIdx === 0 && (
-            <View style={s.mePanel}>
-              <Text style={s.mePanelTitle}>Welcome, {myName.split(' ')[0]}</Text>
-              <Text style={s.mePanelBody}>
-                Select a care receiver above to view their care summary, circle, and settings.
-              </Text>
-              {bookings.length === 0 && (
+            hasSelfProfile ? (
+              <View style={s.selfPanel}>
+                <View style={s.selfPanelHeader}>
+                  <Text style={s.mePanelTitle}>My Care Overview</Text>
+                  <TouchableOpacity onPress={() => router.push('/(app)/manage-self')} activeOpacity={0.7}>
+                    <Text style={s.manageLink}>Manage</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {selfLoading ? (
+                  <ActivityIndicator color="#E53935" style={{ marginVertical: 20 }} />
+                ) : (
+                  <>
+                    <View style={s.selfStatsRow}>
+                      <View style={s.selfStat}>
+                        <Text style={s.selfStatValue}>{selfTasks.length}</Text>
+                        <Text style={s.selfStatLabel}>Tasks</Text>
+                      </View>
+                      <View style={s.selfStatDivider} />
+                      <View style={s.selfStat}>
+                        <Text style={s.selfStatValue}>
+                          {selfTasks.filter((t) => t.category === 'MEDICATION').length}
+                        </Text>
+                        <Text style={s.selfStatLabel}>Medications</Text>
+                      </View>
+                      <View style={s.selfStatDivider} />
+                      <View style={s.selfStat}>
+                        <Text style={s.selfStatValue}>{selfAppointments.length}</Text>
+                        <Text style={s.selfStatLabel}>Appointments</Text>
+                      </View>
+                    </View>
+
+                    {(selfTasks.length > 0 || selfAppointments.length > 0) && (
+                      <View style={s.selfPreviewList}>
+                        {selfTasks.slice(0, 2).map((t: any) => (
+                          <View key={t.id} style={s.selfPreviewRow}>
+                            <View style={[s.selfPreviewDot, { backgroundColor: t.category === 'MEDICATION' ? '#8B5CF6' : '#E53935' }]} />
+                            <Text style={s.selfPreviewText} numberOfLines={1}>{t.title}</Text>
+                            <Text style={s.selfPreviewTime}>{t.scheduledTimes?.[0] ?? ''}</Text>
+                          </View>
+                        ))}
+                        {selfAppointments.slice(0, 1).map((a: any) => (
+                          <View key={a.id} style={s.selfPreviewRow}>
+                            <View style={[s.selfPreviewDot, { backgroundColor: '#3B82F6' }]} />
+                            <Text style={s.selfPreviewText} numberOfLines={1}>{a.title}</Text>
+                            <Text style={s.selfPreviewTime}>{a.scheduledTimes?.[0] ?? ''}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                    <TouchableOpacity
+                      style={s.goToSelfBtn}
+                      onPress={() => router.push('/(app)/manage-self')}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={s.goToSelfBtnText}>View & Manage My Care</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            ) : (
+              <View style={s.mePanel}>
+                <Text style={s.mePanelTitle}>Welcome, {myName.split(' ')[0]}</Text>
+                <Text style={s.mePanelBody}>
+                  Select a care receiver above to view their care summary, circle, and settings.
+                </Text>
                 <TouchableOpacity
                   style={s.addFirstBtn}
-                  onPress={() => router.push('/(app)/add-care-receiver')}
+                  onPress={() => router.push('/(app)/manage-self')}
                   activeOpacity={0.85}
                 >
-                  <Text style={s.addFirstBtnText}>Add Care Receiver</Text>
+                  <Text style={s.addFirstBtnText}>Set Up My Care Profile</Text>
                 </TouchableOpacity>
-              )}
-            </View>
+                {bookings.length === 0 && (
+                  <TouchableOpacity
+                    style={[s.addFirstBtn, { backgroundColor: '#F3F4F6', marginTop: 4 }]}
+                    onPress={() => router.push('/(app)/add-care-receiver')}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[s.addFirstBtnText, { color: '#374151' }]}>Add Care Receiver</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )
           )}
 
           {/* ── Receiver detail panel ── */}
@@ -1457,6 +1562,30 @@ accountRowTextNeutral: {
     borderLeftWidth: 3, borderLeftColor: '#E53935',
   },
   activityNoteTextSos: { fontSize: 12, fontFamily: F.i.regular, color: '#DC2626', lineHeight: 18 },
+
+  selfPanel: {
+    marginHorizontal: 16, marginTop: 16, backgroundColor: '#F9FAFB',
+    borderRadius: 20, padding: 20, gap: 16,
+  },
+  selfPanelHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  selfStatsRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#FFF', borderRadius: 14, padding: 16,
+  },
+  selfStat: { flex: 1, alignItems: 'center', gap: 4 },
+  selfStatValue: { fontSize: 22, fontFamily: F.m.xBold, color: '#E53935' },
+  selfStatLabel: { fontSize: 12, fontFamily: F.i.regular, color: '#6B7280', textAlign: 'center' },
+  selfStatDivider: { width: 1, height: 36, backgroundColor: '#E5E7EB' },
+  selfPreviewList: { gap: 8 },
+  selfPreviewRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#FFF', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+  },
+  selfPreviewDot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
+  selfPreviewText: { flex: 1, fontSize: 13, fontFamily: F.m.semiBold, color: '#111' },
+  selfPreviewTime: { fontSize: 12, fontFamily: F.i.regular, color: '#9CA3AF' },
+  goToSelfBtn: { backgroundColor: '#E53935', borderRadius: 50, paddingVertical: 13, alignItems: 'center' },
+  goToSelfBtnText: { color: '#FFF', fontFamily: F.m.bold, fontSize: 14 },
 });
 
 // ─── Care Receiver Circle Styles ──────────────────────────────────────────────

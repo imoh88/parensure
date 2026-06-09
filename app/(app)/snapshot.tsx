@@ -2,6 +2,7 @@ import ScreenWrapper from '@/components/ui/ScreenWrapper';
 import { caregiverApi } from '@/lib/api/caregiver';
 import { F } from '@/lib/fonts';
 import { appointmentCache } from '@/lib/utils/appointmentCache';
+import { medicationCache } from '@/lib/utils/medicationCache';
 import { taskCache } from '@/lib/utils/taskCache';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -464,8 +465,8 @@ export default function SnapshotScreen() {
                         style={s.medTappable}
                         activeOpacity={0.7}
                         onPress={() => {
-                          taskCache.set(med);
-                          router.push({ pathname: '/(app)/task-detail', params: { taskId: medId } });
+                          medicationCache.set(med);
+                          router.push({ pathname: '/(app)/medication-detail', params: { medId } });
                         }}
                       >
                         <View style={[s.medIconWrap, done && s.medIconDone]}>

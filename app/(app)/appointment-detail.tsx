@@ -1,10 +1,14 @@
 import ScreenWrapper from '@/components/ui/ScreenWrapper';
+import { caregiverApi } from '@/lib/api/caregiver';
 import { F } from '@/lib/fonts';
+import { useCareReceiverDashboardStore } from '@/lib/store/careReceiverDashboardStore';
+import { useCaregiverDashboardStore } from '@/lib/store/caregiverDashboardStore';
 import { appointmentCache } from '@/lib/utils/appointmentCache';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { ArrowLeft, Building, Calendar, Call, Location, Sms } from 'iconsax-react-native';
-import React, { useCallback } from 'react';
+import { ArrowLeft, Building, Calendar, Call, Location, Sms, Trash } from 'iconsax-react-native';
+import React, { useCallback, useState } from 'react';
 import {
+  Alert,
   BackHandler,
   Linking,
   ScrollView,
@@ -23,6 +27,9 @@ function formatApptDate(iso?: string) {
 export default function AppointmentDetailScreen() {
   const router = useRouter();
   const appt = appointmentCache.get() as any;
+  const [deleting, setDeleting] = useState(false);
+  const invalidateCareReceiver = useCareReceiverDashboardStore((s) => s.invalidate);
+  const invalidateCaregiver = useCaregiverDashboardStore((s) => s.invalidate);
 
   useFocusEffect(useCallback(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -43,6 +50,31 @@ export default function AppointmentDetailScreen() {
   }
 
   const handleBack = () => router.back();
+
+  const handleDelete = () => {
+    Alert.alert(
+      'Delete Appointment',
+      'Are you sure you want to delete this appointment? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive', onPress: async () => {
+            setDeleting(true);
+            try {
+              await caregiverApi.deleteAppointment(appt._id ?? appt.id);
+              invalidateCareReceiver();
+              invalidateCaregiver();
+              router.replace('/(app)');
+            } catch {
+              Alert.alert('Error', 'Could not delete appointment. Please try again.');
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ],
+    );
+  };
 
   const handleEdit = () => {
     router.push({ pathname: '/(app)/add-appointment', params: { apptId: appt._id ?? appt.id, from: '/(app)/appointment-detail' } });
@@ -66,7 +98,9 @@ export default function AppointmentDetailScreen() {
           <ArrowLeft size={22} color="#E53935" variant="Linear" />
         </TouchableOpacity>
         <Text style={s.headerTitle}>Appointments</Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity style={s.backBtn} onPress={handleDelete} activeOpacity={0.7} disabled={deleting}>
+          <Trash size={22} color="#E53935" variant="Linear" />
+        </TouchableOpacity>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>

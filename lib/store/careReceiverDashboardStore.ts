@@ -10,6 +10,7 @@ interface CareReceiverDashboardState {
 
   setData: (tasks: any[], appointments: any[], hasCareTeam: boolean) => void;
   clearDashboard: () => void;
+  invalidate: () => void;
   isStale: () => boolean;
 }
 
@@ -24,6 +25,8 @@ export const useCareReceiverDashboardStore = create<CareReceiverDashboardState>(
 
   clearDashboard: () =>
     set({ tasks: [], appointments: [], hasCareTeam: false, lastFetchedAt: null }),
+
+  invalidate: () => set({ lastFetchedAt: null }),
 
   isStale: () => {
     const { lastFetchedAt } = get();

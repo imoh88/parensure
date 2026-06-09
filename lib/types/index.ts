@@ -20,11 +20,16 @@ export interface User {
   timezone?: string;
   isProfileComplete?: boolean;
   createdAt: string;
+  careReceiverProfile?: CareReceiverProfile | null;
+  caregiverProfile?: CaregiverProfile | null;
+  firmAdminProfile?: FirmProfile | null;
 }
 
 export interface CareReceiverProfile {
   id: string;
   userId: string;
+  caregiverProfileId?: string;
+  isSelfManaged?: boolean;
   dateOfBirth?: string;
   medicalNotes?: string;
   address?: string;
@@ -35,6 +40,7 @@ export interface CareReceiverProfile {
 export interface CaregiverProfile {
   id: string;
   userId: string;
+  selfCareReceiverId?: string;
   verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED';
   certifications?: string;
   hourlyRate?: number;

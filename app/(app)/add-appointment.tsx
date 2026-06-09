@@ -4,8 +4,9 @@ import { F } from '@/lib/fonts';
 import { useAuthStore } from '@/lib/store/authStore';
 import { appointmentCache } from '@/lib/utils/appointmentCache';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import * as DocumentPicker from 'expo-document-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Add, ArrowDown2, ArrowLeft, CloseCircle, DocumentText, Location, TickCircle } from 'iconsax-react-native';
+import { Add, ArrowDown2, ArrowLeft, CloseCircle, DocumentText, Location, TickCircle, Trash } from 'iconsax-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -197,7 +198,7 @@ export default function AddAppointmentScreen() {
   const router = useRouter();
   const { apptId } = useLocalSearchParams<{ apptId?: string }>();
   const isEditing = !!apptId;
-  const { activeRole } = useAuthStore();
+  const { activeRole, selfCareReceiverId, user } = useAuthStore();
   const isCareReceiver = activeRole === 'CARE_RECEIVER';
 
   const existing = isEditing ? (appointmentCache.get() as any) : null;
@@ -236,6 +237,48 @@ export default function AddAppointmentScreen() {
 
   const [saving, setSaving] = useState(false);
 
+  interface AttachedFile { name: string; key: string; }
+  const [attachments, setAttachments] = useState<AttachedFile[]>(
+    existing?.attachments?.map((key: string) => ({ name: key.split('/').pop() ?? key, key })) ?? []
+  );
+  const [uploadingFile, setUploadingFile] = useState(false);
+
+  const handlePickFile = async () => {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ['application/pdf', 'image/*', 'application/msword',
+             'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+      copyToCacheDirectory: true,
+      multiple: false,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    const filename = asset.name;
+    const mimeType = asset.mimeType ?? 'application/octet-stream';
+
+    setUploadingFile(true);
+    try {
+      const urlRes = await caregiverApi.getAppointmentUploadUrl(filename, mimeType);
+      if (!urlRes.success || !urlRes.data) throw new Error('Could not get upload URL');
+      const { url, key } = urlRes.data;
+
+      const fileData = await fetch(asset.uri);
+      const blob = await fileData.blob();
+      const s3Res = await fetch(url, {
+        method: 'PUT', body: blob, headers: { 'Content-Type': mimeType },
+      });
+      if (!s3Res.ok) throw new Error(`Upload failed (${s3Res.status})`);
+
+      setAttachments((prev) => [...prev, { name: filename, key }]);
+    } catch (err: any) {
+      Alert.alert('Upload failed', err?.message ?? 'Could not upload file. Please try again.');
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const removeAttachment = (key: string) =>
+    setAttachments((prev) => prev.filter((a) => a.key !== key));
+
   const addTime = () => {
     const label = formatTimeLabel(currentTime);
     if (!scheduledTimes.find((t) => formatTimeLabel(t.date) === label)) {
@@ -248,25 +291,34 @@ export default function AddAppointmentScreen() {
   const loadReceivers = useCallback(async () => {
     if (isCareReceiver) { setLoadingReceivers(false); return; }
     setLoadingReceivers(true);
+    const list: Receiver[] = [];
+    if (selfCareReceiverId) {
+      list.push({
+        id: 'self',
+        careReceiverId: selfCareReceiverId,
+        name: `${user?.fullName ?? 'Me'} (me)`,
+      });
+    }
     try {
       const res = await caregiverApi.getBookings();
       if (res.success && res.data) {
-        const list: Receiver[] = (res.data as any[])
+        const bookingList: Receiver[] = (res.data as any[])
           .filter((b) => b.careReceiver?.user)
           .map((b) => ({
             id: b.id,
             careReceiverId: b.careReceiverId,
             name: b.careReceiver?.user?.fullName ?? 'Unknown',
           }));
-        setReceivers(list);
-        if (list.length > 0 && list[0]) setSelectedReceiverId(list[0].careReceiverId);
+        list.push(...bookingList);
       }
     } catch {
       // silently fail
     } finally {
+      setReceivers(list);
+      if (list.length > 0 && list[0]) setSelectedReceiverId(list[0].careReceiverId);
       setLoadingReceivers(false);
     }
-  }, [isCareReceiver]);
+  }, [isCareReceiver, selfCareReceiverId, user?.fullName]);
 
   useEffect(() => { loadReceivers(); }, [loadReceivers]);
 
@@ -292,6 +344,7 @@ export default function AddAppointmentScreen() {
         reminderMinutes: reminder,
         frequency,
         priority,
+        attachments: attachments.map((a) => a.key),
       };
 
       const res = isEditing
@@ -549,9 +602,28 @@ export default function AddAppointmentScreen() {
           <DocumentText size={32} color="#D1D5DB" variant="Linear" />
           <Text style={s.attachTitle}>Add an attachment</Text>
           <Text style={s.attachSub}>Add photos, medical reports, or documents (Max 10MB)</Text>
-          <TouchableOpacity style={s.chooseFileBtn} activeOpacity={0.8}>
-            <Text style={s.chooseFileText}>Choose File</Text>
+          <TouchableOpacity
+            style={[s.chooseFileBtn, uploadingFile && { opacity: 0.6 }]}
+            onPress={handlePickFile}
+            disabled={uploadingFile}
+            activeOpacity={0.8}
+          >
+            <Text style={s.chooseFileText}>{uploadingFile ? 'Uploading…' : 'Choose File'}</Text>
           </TouchableOpacity>
+
+          {attachments.length > 0 && (
+            <View style={s.attachList}>
+              {attachments.map((a) => (
+                <View key={a.key} style={s.attachChip}>
+                  <DocumentText size={14} color="#E53935" variant="Linear" />
+                  <Text style={s.attachChipText} numberOfLines={1}>{a.name}</Text>
+                  <TouchableOpacity onPress={() => removeAttachment(a.key)} hitSlop={8}>
+                    <Trash size={14} color="#9CA3AF" variant="Linear" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
 
         {/* Actions */}
@@ -757,6 +829,15 @@ const s = StyleSheet.create({
     borderRadius: 20, borderWidth: 1, borderColor: '#D1D5DB',
   },
   chooseFileText: { fontSize: 13, fontFamily: F.m.semiBold, color: '#374151' },
+
+  attachList: { width: '100%', gap: 8, marginTop: 4 },
+  attachChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#FEF2F2', borderRadius: 8,
+    borderWidth: 1, borderColor: '#FCA5A5',
+    paddingHorizontal: 12, paddingVertical: 8,
+  },
+  attachChipText: { flex: 1, fontSize: 12, fontFamily: F.m.semiBold, color: '#E53935' },
 
   saveBtn: {
     backgroundColor: '#E53935', borderRadius: 50,

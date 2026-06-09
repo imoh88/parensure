@@ -1,8 +1,12 @@
 import ScreenWrapper from '@/components/ui/ScreenWrapper';
+import { authApi } from '@/lib/api/auth';
 import { caregiverApi } from '@/lib/api/caregiver';
 import { F } from '@/lib/fonts';
 import { useAuthStore } from '@/lib/store/authStore';
+import { useCareReceiverDashboardStore } from '@/lib/store/careReceiverDashboardStore';
+import { useCaregiverDashboardStore } from '@/lib/store/caregiverDashboardStore';
 import { taskCache } from '@/lib/utils/taskCache';
+import { storage } from '@/lib/utils/storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -345,8 +349,10 @@ export default function AddTaskScreen() {
   const params = useLocalSearchParams<{ taskId?: string; from?: string }>();
   const editTask = params.taskId ? (taskCache.get() as any) : null;
   const isEditMode = !!params.taskId;
-  const { activeRole } = useAuthStore();
+  const { activeRole, selfCareReceiverId, user, updateUser, setSelfCareReceiverId, syncProfile } = useAuthStore();
   const isCareReceiver = activeRole === 'CARE_RECEIVER';
+  const invalidateCareReceiver = useCareReceiverDashboardStore((s) => s.invalidate);
+  const invalidateCaregiver = useCaregiverDashboardStore((s) => s.invalidate);
 
   const [title, setTitle] = useState(editTask?.title ?? '');
   const [description, setDescription] = useState(editTask?.description ?? '');
@@ -374,6 +380,7 @@ export default function AddTaskScreen() {
   const [receivers, setReceivers] = useState<Receiver[]>([]);
   const [selectedReceiverId, setSelectedReceiverId] = useState('');
   const [loadingReceivers, setLoadingReceivers] = useState(true);
+  const [creatingSelf, setCreatingSelf] = useState(false);
 
   const [customSchedule, setCustomSchedule] = useState<CustomSchedule>(emptySchedule);
   const [showCustomSchedule, setShowCustomSchedule] = useState(false);
@@ -452,29 +459,73 @@ export default function AddTaskScreen() {
   const loadReceivers = useCallback(async () => {
     if (isCareReceiver) { setLoadingReceivers(false); return; }
     setLoadingReceivers(true);
+
+    // Build the list starting with self-care BEFORE any async call
+    // so a failed bookings request can never wipe out the self entry
+    const list: Receiver[] = [];
+    if (selfCareReceiverId) {
+      list.push({
+        id: 'self',
+        careReceiverId: selfCareReceiverId,
+        name: `${user?.fullName ?? 'Me'} (me)`,
+      });
+    }
+
     try {
       const res = await caregiverApi.getBookings();
       if (res.success && res.data) {
-        const list: Receiver[] = (res.data as any[])
+        const bookingList: Receiver[] = (res.data as any[])
           .filter((b) => b.careReceiver?.user)
           .map((b) => ({
             id: b.id,
             careReceiverId: b.careReceiverId,
             name: b.careReceiver?.user?.fullName ?? 'Unknown',
           }));
-        setReceivers(list);
-        if (list.length > 0 && list[0]) {
-          setSelectedReceiverId(list[0].careReceiverId);
-        }
+        list.push(...bookingList);
       }
     } catch {
-      // silently fail
+      // bookings failed — self-care entry is still in the list
     } finally {
+      setReceivers(list);
+      if (list.length > 0 && list[0]) {
+        setSelectedReceiverId(list[0].careReceiverId);
+      }
       setLoadingReceivers(false);
     }
-  }, [isCareReceiver]);
+  }, [isCareReceiver, selfCareReceiverId, user?.fullName]);
 
   useEffect(() => { loadReceivers(); }, [loadReceivers]);
+
+  const handleCreateSelf = async () => {
+    setCreatingSelf(true);
+    try {
+      const res = await authApi.addLinkedProfile('CARE_RECEIVER');
+      if (res.success && res.data) {
+        const { token, user: updatedUser, careReceiverId } = res.data;
+        if (token) await storage.setToken(token);
+        if (updatedUser) await updateUser(updatedUser as any);
+        if (careReceiverId) await setSelfCareReceiverId(careReceiverId);
+        await loadReceivers();
+      }
+    } catch (err: any) {
+      const status: number = err.response?.status;
+      const msg: string = err.response?.data?.message ?? '';
+      if (status === 400 && msg.includes('already have')) {
+        // Profile exists on server but selfCareReceiverId not in store.
+        // Fetch the full profile to get the careReceiverProfile.id.
+        try {
+          await syncProfile();
+          // selfCareReceiverId now in store; useEffect([loadReceivers]) auto-reruns.
+        } catch {
+          Alert.alert('Sync failed', 'Your care profile exists but could not be loaded. Please restart the app.');
+        }
+        return;
+      }
+      Alert.alert('Error', msg || 'Could not create profile.');
+    } finally {
+      setCreatingSelf(false);
+    }
+  };
 
   // Minimum selectable time — now() when start date is today or in the past (includes edit mode)
   const timePickerMinimum = (() => {
@@ -560,6 +611,8 @@ export default function AddTaskScreen() {
         : await caregiverApi.createTask(taskPayload);
 
       if (res.success) {
+        if (isCareReceiver) invalidateCareReceiver();
+        else invalidateCaregiver();
         router.replace('/(app)');
       } else {
         Alert.alert('Error', `Failed to ${isEditMode ? 'update' : 'create'} task. Please try again.`);
@@ -635,7 +688,22 @@ export default function AddTaskScreen() {
             {loadingReceivers ? (
               <ActivityIndicator color="#E53935" style={{ marginTop: 8 }} />
             ) : receivers.length === 0 ? (
-              <Text style={s.emptyText}>No care receivers in your care circle yet.</Text>
+              <View style={s.selfSetupRow}>
+                <Text style={s.emptyText}>No care receivers yet.</Text>
+                {!selfCareReceiverId && (
+                  <TouchableOpacity
+                    style={s.selfSetupBtn}
+                    onPress={handleCreateSelf}
+                    disabled={creatingSelf}
+                    activeOpacity={0.8}
+                  >
+                    {creatingSelf
+                      ? <ActivityIndicator color="#fff" size="small" />
+                      : <Text style={s.selfSetupBtnText}>+ Add Myself</Text>
+                    }
+                  </TouchableOpacity>
+                )}
+              </View>
             ) : (
               <TouchableOpacity style={s.selector} onPress={() => setShowReceiverPicker(true)} activeOpacity={0.8}>
                 <Text style={s.selectorText}>{selectedReceiver?.name ?? 'Select...'}</Text>
@@ -960,6 +1028,9 @@ const s = StyleSheet.create({
   },
   selectorText: { fontSize: 15, fontFamily: F.i.regular, color: '#111' },
   emptyText: { fontSize: 14, fontFamily: F.i.regular, color: '#9CA3AF', marginTop: 8 },
+  selfSetupRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
+  selfSetupBtn: { backgroundColor: '#E53935', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8, minWidth: 44, alignItems: 'center' },
+  selfSetupBtnText: { fontSize: 13, fontFamily: F.m.semiBold, color: '#fff' },
 
   sectionDividerLabel: {
     fontSize: 12, fontFamily: F.i.regular, color: '#9CA3AF', marginBottom: 8,

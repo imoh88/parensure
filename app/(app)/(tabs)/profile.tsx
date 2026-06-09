@@ -109,7 +109,7 @@ export default function ProfileScreen() {
         <MenuRow
           icon={Notification}
           label="System Notifications"
-          onPress={() => {}}
+          onPress={() => router.push('/(app)/notifications')}
         />
         {/* <MenuRow
           icon={ProfileCircle}

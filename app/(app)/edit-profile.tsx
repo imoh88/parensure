@@ -3,6 +3,7 @@ import { F } from '@/lib/fonts';
 import { useProfilePhoto } from '@/lib/hooks/useProfilePhoto';
 import { useAuthStore } from '@/lib/store/authStore';
 import { useFocusEffect, useRouter } from 'expo-router';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { ArrowDown2, ArrowLeft, Camera } from 'iconsax-react-native';
 import React, { useCallback, useState } from 'react';
 import {
@@ -143,8 +144,15 @@ export default function EditProfileScreen() {
   const [firstName, setFirstName] = useState(nameParts[0] ?? '');
   const [lastName, setLastName] = useState(nameParts.slice(1).join(' '));
   const [phone, setPhone] = useState(user?.phone ?? '');
-  const [gender, setGender] = useState('');
-  const [relationship, setRelationship] = useState('');
+  const [gender, setGender] = useState(
+    user?.gender ? user.gender.charAt(0) + user.gender.slice(1).toLowerCase() : ''
+  );
+  const [relationship, setRelationship] = useState(user?.relationship ?? '');
+  const [dateOfBirth, setDateOfBirth] = useState<Date | null>(
+    user?.dateOfBirth ? new Date(user.dateOfBirth) : null
+  );
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [pickerDate, setPickerDate] = useState(user?.dateOfBirth ? new Date(user.dateOfBirth) : new Date(2000, 0, 1));
   const [country, setCountry] = useState(user?.country ?? '');
   const [state, setState] = useState(user?.state ?? '');
   const [city, setCity] = useState(user?.city ?? '');
@@ -153,14 +161,32 @@ export default function EditProfileScreen() {
 
   const [picker, setPicker] = useState<null | 'gender' | 'relationship' | 'country' | 'timezone'>(null);
 
+  const formatDOB = (d: Date) =>
+    d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  const onDateChange = (event: DateTimePickerEvent, date?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+      if (event.type === 'set' && date) setDateOfBirth(date);
+    } else {
+      if (date) setPickerDate(date);
+    }
+  };
+
   const onSave = async () => {
     const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ');
     if (!fullName) { Alert.alert('Error', 'Name is required.'); return; }
     setSaving(true);
     try {
+      const genderMap: Record<string, 'MALE' | 'FEMALE' | 'OTHER'> = {
+        Male: 'MALE', Female: 'FEMALE', Other: 'OTHER',
+      };
       const response = await authApi.updateProfile({
         fullName,
         phone,
+        dateOfBirth: dateOfBirth ? dateOfBirth.toISOString().split('T')[0] : undefined,
+        gender: gender ? genderMap[gender] : undefined,
+        relationship: relationship || undefined,
         country,
         state,
         city,
@@ -224,7 +250,19 @@ export default function EditProfileScreen() {
           <TextField label="Last Name" value={lastName} onChangeText={setLastName} placeholder="Wilson" />
           <TextField label="Email Address" value={user?.email ?? ''} editable={false} />
           <TextField label="Phone Number" value={phone} onChangeText={setPhone} placeholder="+1 234 567 8900" keyboardType="phone-pad" />
-          <DropdownField label="Date of birth" value={undefined} placeholder="Select date of birth" onPress={() => {}} />
+          <View style={f.wrapper}>
+            <Text style={f.label}>Date of Birth</Text>
+            <TouchableOpacity
+              style={f.dropdown}
+              onPress={() => { setPickerDate(dateOfBirth ?? new Date(2000, 0, 1)); setShowDatePicker(true); }}
+              activeOpacity={0.8}
+            >
+              <Text style={dateOfBirth ? f.dropdownValue : f.dropdownPlaceholder}>
+                {dateOfBirth ? formatDOB(dateOfBirth) : 'Select date of birth'}
+              </Text>
+              <ArrowDown2 size={16} color="#9CA3AF" variant="Linear" />
+            </TouchableOpacity>
+          </View>
           <DropdownField label="Gender" value={gender} placeholder="Select gender" onPress={() => setPicker('gender')} optional />
           <DropdownField label="Relationship to Care Recipient" value={relationship} placeholder="Select relationship" onPress={() => setPicker('relationship')} />
 
@@ -298,6 +336,44 @@ export default function EditProfileScreen() {
         onSelect={setTimezone}
         onClose={() => setPicker(null)}
       />
+
+      {/* iOS date picker in a bottom sheet */}
+      {Platform.OS === 'ios' && (
+        <Modal
+          visible={showDatePicker}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowDatePicker(false)}
+        >
+          <TouchableOpacity style={m.overlay} activeOpacity={1} onPress={() => setShowDatePicker(false)} />
+          <View style={m.sheet}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <Text style={m.title}>Date of Birth</Text>
+              <TouchableOpacity onPress={() => { setDateOfBirth(pickerDate); setShowDatePicker(false); }}>
+                <Text style={{ color: '#E84545', fontFamily: F.m.semiBold, fontSize: 16 }}>Done</Text>
+              </TouchableOpacity>
+            </View>
+            <DateTimePicker
+              value={pickerDate}
+              mode="date"
+              display="spinner"
+              maximumDate={new Date()}
+              onChange={onDateChange}
+            />
+          </View>
+        </Modal>
+      )}
+
+      {/* Android date picker dialog */}
+      {Platform.OS === 'android' && showDatePicker && (
+        <DateTimePicker
+          value={pickerDate}
+          mode="date"
+          display="default"
+          maximumDate={new Date()}
+          onChange={onDateChange}
+        />
+      )}
     </View>
   );
 }

@@ -26,6 +26,16 @@ function InfoRow({ icon: Icon, label, value }: InfoRowProps) {
   );
 }
 
+const formatDOB = (d?: string) => {
+  if (!d) return undefined;
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return d;
+  return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+};
+
+const genderLabel = (g?: string) =>
+  g ? g.charAt(0) + g.slice(1).toLowerCase() : undefined;
+
 export default function PersonalInformationScreen() {
   const router = useRouter();
   const { from } = useLocalSearchParams<{ from?: string }>();
@@ -99,9 +109,9 @@ export default function PersonalInformationScreen() {
           <View style={s.sep} />
           <InfoRow icon={Call} label="Phone Number" value={user?.phone} />
           <View style={s.sep} />
-          <InfoRow icon={Calendar} label="Date of Birth" value={undefined} />
+          <InfoRow icon={Calendar} label="Date of Birth" value={formatDOB(user?.dateOfBirth)} />
           <View style={s.sep} />
-          <InfoRow icon={Profile} label="Gender" value={undefined} />
+          <InfoRow icon={Profile} label="Gender" value={genderLabel(user?.gender)} />
         </View>
 
         {/* Location Information */}

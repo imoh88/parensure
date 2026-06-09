@@ -15,6 +15,7 @@ interface CaregiverDashboardState {
   setBookings: (bookings: any[]) => void;
   setTeam: (careReceiverId: string, members: any[]) => void;
   getTeam: (careReceiverId: string) => any[];
+  invalidate: () => void;
   invalidateTeam: (careReceiverId: string) => void;
   isStale: () => boolean;
   isTeamStale: (careReceiverId: string) => boolean;
@@ -37,6 +38,8 @@ export const useCaregiverDashboardStore = create<CaregiverDashboardState>((set, 
     })),
 
   getTeam: (careReceiverId) => get().teamCache[careReceiverId]?.members ?? [],
+
+  invalidate: () => set({ lastFetchedAt: null }),
 
   invalidateTeam: (careReceiverId) =>
     set((state) => {

@@ -70,6 +70,11 @@ export const caregiverApi = {
     return response.data;
   },
 
+  getTaskAttachmentUrl: async (key: string): Promise<ApiResponse<{ url: string }>> => {
+    const response = await apiClient.get('/task/attachment-url', { params: { key } });
+    return response.data;
+  },
+
   getTasks: async (careReceiverId?: string): Promise<ApiResponse<any[]>> => {
     const response = await apiClient.get('/task', { params: careReceiverId ? { careReceiverId } : undefined });
     return response.data;
@@ -77,6 +82,11 @@ export const caregiverApi = {
 
   updateTaskStatus: async (taskId: string, status: 'COMPLETED' | 'CANCELLED'): Promise<ApiResponse<any>> => {
     const response = await apiClient.patch(`/task/${taskId}/status`, { status });
+    return response.data;
+  },
+
+  deleteTask: async (taskId: string): Promise<ApiResponse<{ message: string }>> => {
+    const response = await apiClient.delete(`/task/${taskId}`);
     return response.data;
   },
 
@@ -125,6 +135,11 @@ export const caregiverApi = {
     return response.data;
   },
 
+  getAppointmentUploadUrl: async (filename: string, mimeType: string): Promise<ApiResponse<{ url: string; key: string }>> => {
+    const response = await apiClient.get('/appointment/upload-url', { params: { filename, mimeType } });
+    return response.data;
+  },
+
   createAppointment: async (data: {
     careReceiverId: string;
     title: string;
@@ -138,6 +153,7 @@ export const caregiverApi = {
     reminderMinutes?: number;
     frequency?: string;
     priority?: string;
+    attachments?: string[];
   }): Promise<ApiResponse<any>> => {
     const response = await apiClient.post('/appointment', data);
     return response.data;
@@ -155,6 +171,7 @@ export const caregiverApi = {
     reminderMinutes?: number;
     frequency?: string;
     priority?: string;
+    attachments?: string[];
   }): Promise<ApiResponse<any>> => {
     const response = await apiClient.patch(`/appointment/${appointmentId}`, data);
     return response.data;
@@ -177,6 +194,11 @@ export const caregiverApi = {
 
   updateAppointmentStatus: async (appointmentId: string, status: 'COMPLETED' | 'CANCELLED'): Promise<ApiResponse<any>> => {
     const response = await apiClient.patch(`/appointment/${appointmentId}`, { status });
+    return response.data;
+  },
+
+  deleteAppointment: async (appointmentId: string): Promise<ApiResponse<{ message: string }>> => {
+    const response = await apiClient.delete(`/appointment/${appointmentId}`);
     return response.data;
   },
 

@@ -1,14 +1,17 @@
 import { caregiverApi } from '@/lib/api/caregiver';
 import { F } from '@/lib/fonts';
 import { useAuthStore } from '@/lib/store/authStore';
+import { useCareReceiverDashboardStore } from '@/lib/store/careReceiverDashboardStore';
+import { useCaregiverDashboardStore } from '@/lib/store/caregiverDashboardStore';
 import { taskCache } from '@/lib/utils/taskCache';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -78,9 +81,34 @@ export default function TaskDetailScreen() {
 
   const task = taskCache.get() as any;
   const [marking, setMarking] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [done, setDone] = useState(
     task?.status === 'COMPLETED' || task?.completed === true
   );
+
+  const attachmentKeys: string[] = task?.attachments ?? [];
+  const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>({});
+  const [loadingAttachments, setLoadingAttachments] = useState(false);
+
+  useEffect(() => {
+    if (attachmentKeys.length === 0) return;
+    setLoadingAttachments(true);
+    Promise.all(
+      attachmentKeys.map(async (key: string) => {
+        const res = await caregiverApi.getTaskAttachmentUrl(key);
+        return { key, url: res.data.url };
+      })
+    )
+      .then((results) => {
+        const map: Record<string, string> = {};
+        results.forEach(({ key, url }: { key: string; url: string }) => {
+          map[key] = url;
+        });
+        setAttachmentUrls(map);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingAttachments(false));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!task) {
     return (
@@ -126,8 +154,37 @@ export default function TaskDetailScreen() {
     }
   };
 
+  const invalidateCareReceiver = useCareReceiverDashboardStore((s) => s.invalidate);
+  const invalidateCaregiver = useCaregiverDashboardStore((s) => s.invalidate);
+
   const handleEdit = () => {
     router.push({ pathname: '/(app)/add-task', params: { taskId: taskId ?? '', from: '/(app)/task-detail' } });
+  };
+
+  const handleDelete = () => {
+    Alert.alert(
+      'Delete Task',
+      'Are you sure you want to delete this task? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive',
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              await caregiverApi.deleteTask(resolvedTaskId);
+              invalidateCareReceiver();
+              invalidateCaregiver();
+              router.replace('/(app)');
+            } catch {
+              Alert.alert('Error', 'Could not delete task. Please try again.');
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   // Build activity log entries
@@ -157,6 +214,9 @@ export default function TaskDetailScreen() {
         </TouchableOpacity>
         <Text style={s.headerTitle}>Tasks</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <TouchableOpacity onPress={handleDelete} disabled={deleting} style={s.menuBtn} activeOpacity={0.7}>
+            <Ionicons name="trash-outline" size={20} color="#E53935" />
+          </TouchableOpacity>
           <View style={s.userAvatar}>
             {receiverImage ? (
               <Image source={{ uri: receiverImage }} style={s.userAvatarImg} />
@@ -244,6 +304,38 @@ export default function TaskDetailScreen() {
             )}
           </View>
         </View>
+
+        {/* Attachments */}
+        {attachmentKeys.length > 0 && (
+          <View style={s.section}>
+            <View style={s.sectionHeader}>
+              <Text style={s.sectionTitle}>Attachments</Text>
+            </View>
+            {loadingAttachments ? (
+              <ActivityIndicator size="small" color="#E53935" />
+            ) : (
+              <View style={s.attachList}>
+                {attachmentKeys.map((key) => {
+                  const filename = key.split('/').pop() ?? key;
+                  const url = attachmentUrls[key];
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      style={s.attachChip}
+                      onPress={() => url && Linking.openURL(url)}
+                      disabled={!url}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="document-outline" size={16} color="#E53935" />
+                      <Text style={s.attachChipText} numberOfLines={1}>{filename}</Text>
+                      <Ionicons name="open-outline" size={14} color="#9CA3AF" />
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Activity Log */}
         <View style={s.section}>
@@ -387,6 +479,17 @@ const s = StyleSheet.create({
   logTime: { fontSize: 12, fontFamily: F.m.semiBold, color: '#9CA3AF', marginBottom: 3 },
   logBody: { fontSize: 14, fontFamily: F.i.regular, color: '#374151', lineHeight: 20 },
   logBold: { fontFamily: F.m.bold, color: '#111' },
+
+  // ── Attachments ──
+  attachList: { gap: 8 },
+  attachChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#F5F5F7', borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 10,
+  },
+  attachChipText: {
+    flex: 1, fontSize: 14, fontFamily: F.i.regular, color: '#374151',
+  },
 
   // ── Footer ──
   footer: {

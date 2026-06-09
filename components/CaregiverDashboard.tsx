@@ -230,10 +230,15 @@ export default function CaregiverDashboard() {
   }, []);
 
   useFocusEffect(useCallback(() => {
-    if (isStale()) fetchBookings();
+    if (isStale()) {
+      fetchBookings();
+    } else {
+      setLoadingBookings(false); // data is fresh — never leave spinner running
+    }
 
     const careReceiverId = bookings[selectedIdx]?.careReceiverId;
     if (careReceiverId) {
+      fetchTasks(careReceiverId);
       fetchAppointments(careReceiverId);
       fetchActivityLog(careReceiverId);
     }
@@ -249,7 +254,7 @@ export default function CaregiverDashboard() {
         })
         .catch(() => { /* silent */ });
     }
-  }, [fetchBookings, isStale, fetchAppointments, bookings, selectedIdx]));
+  }, [fetchBookings, isStale, fetchTasks, fetchAppointments, fetchActivityLog, bookings, selectedIdx]));
 
   const fetchTasks = useCallback(async (careReceiverId: string) => {
     setLoadingTasks(true);

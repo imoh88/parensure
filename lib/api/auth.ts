@@ -106,8 +106,8 @@ export const authApi = {
     return response.data;
   },
 
-  getProfileImageUploadUrl: async (): Promise<ApiResponse<{ url: string; key: string }>> => {
-    const response = await apiClient.get('/auth/profile-image-url');
+  getProfileImageUploadUrl: async (contentType = 'image/jpeg'): Promise<ApiResponse<{ url: string; key: string }>> => {
+    const response = await apiClient.get('/auth/profile-image-url', { params: { contentType } });
     return response.data;
   },
 
@@ -131,7 +131,7 @@ export const authApi = {
     return response.data;
   },
 
-  addLinkedProfile: async (profileType: 'CAREGIVER' | 'CARE_RECEIVER'): Promise<ApiResponse<{ user: User }>> => {
+  addLinkedProfile: async (profileType: 'CAREGIVER' | 'CARE_RECEIVER'): Promise<ApiResponse<{ token: string; user: User; careReceiverId?: string }>> => {
     const response = await apiClient.post('/auth/add-profile', { profileType });
     return response.data;
   },

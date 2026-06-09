@@ -7,6 +7,7 @@ const KEYS = {
   BIOMETRIC_TOKEN: '@biometric_token',
   BIOMETRIC_USER: '@biometric_user',
   ACTIVE_ROLE: '@active_role',
+  SELF_CARE_RECEIVER_ID: '@self_care_receiver_id',
 };
 
 export const storage = {
@@ -138,10 +139,30 @@ export const storage = {
     }
   },
 
+  getSelfCareReceiverId: async (): Promise<string | null> => {
+    try {
+      return await AsyncStorage.getItem(KEYS.SELF_CARE_RECEIVER_ID);
+    } catch {
+      return null;
+    }
+  },
+
+  setSelfCareReceiverId: async (id: string | null): Promise<void> => {
+    try {
+      if (id) {
+        await AsyncStorage.setItem(KEYS.SELF_CARE_RECEIVER_ID, id);
+      } else {
+        await AsyncStorage.removeItem(KEYS.SELF_CARE_RECEIVER_ID);
+      }
+    } catch (error) {
+      console.error('Error setting selfCareReceiverId:', error);
+    }
+  },
+
   // Clear all (session only — biometric credentials are kept)
   clearAll: async (): Promise<void> => {
     try {
-      await AsyncStorage.multiRemove([KEYS.TOKEN, KEYS.REFRESH_TOKEN, KEYS.USER, KEYS.ACTIVE_ROLE]);
+      await AsyncStorage.multiRemove([KEYS.TOKEN, KEYS.REFRESH_TOKEN, KEYS.USER, KEYS.ACTIVE_ROLE, KEYS.SELF_CARE_RECEIVER_ID]);
     } catch (error) {
       console.error('Error clearing storage:', error);
     }
