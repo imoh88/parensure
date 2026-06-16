@@ -1,4 +1,5 @@
 import { alertApi } from '@/lib/api/alert';
+import { chatApi } from '@/lib/api/chat';
 import { F } from '@/lib/fonts';
 import { Alert, AlertType } from '@/lib/types';
 import { Ionicons } from '@expo/vector-icons';
@@ -125,14 +126,19 @@ export default function AlertDetailScreen() {
     }).finally(() => setLoading(false));
   }, [id]);
 
-  const handleCheckIn = async () => {
+  const handleMessage = async () => {
     if (!alert) return;
+    const userId = alert.careReceiver?.userId;
+    const name = alert.careReceiver?.user?.fullName ?? 'Care Receiver';
+    if (!userId) return;
     setActionLoading(true);
     try {
-      await alertApi.checkIn(alert.id);
-      const careReceiverId = alert.careReceiver?.id;
-      if (careReceiverId) {
-        router.push({ pathname: '/(app)/care-receiver-detail', params: { careReceiverId } });
+      const res = await chatApi.getOrCreateConversation(userId);
+      if (res.success && res.data) {
+        router.push({
+          pathname: '/(app)/chat-room',
+          params: { conversationId: res.data.id, userName: name, from: '/(app)/alert-detail' },
+        });
       }
     } finally {
       setActionLoading(false);
@@ -289,14 +295,14 @@ export default function AlertDetailScreen() {
           <View style={[s.actions, { paddingBottom: insets.bottom + 12 }]}>
             <TouchableOpacity
               style={s.btnCheckIn}
-              onPress={handleCheckIn}
+              onPress={handleMessage}
               disabled={actionLoading}
               activeOpacity={0.85}
             >
               {actionLoading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={s.btnCheckInText}>Check In</Text>
+                <Text style={s.btnCheckInText}>Message</Text>
               )}
             </TouchableOpacity>
             <TouchableOpacity

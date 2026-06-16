@@ -1,18 +1,20 @@
 import { alertApi } from '@/lib/api/alert';
+import { chatApi } from '@/lib/api/chat';
 import { F } from '@/lib/fonts';
+import { useAlertsStore } from '@/lib/store/alertsStore';
 import { Alert, AlertType } from '@/lib/types';
-import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -106,13 +108,13 @@ function EmptyState() {
 
 interface AlertCardProps {
   alert: Alert;
-  onCheckIn: () => void;
+  onMessage: () => void;
   onResolve: () => void;
   onPress: () => void;
   loading: boolean;
 }
 
-function AlertCard({ alert, onCheckIn, onResolve, onPress, loading }: AlertCardProps) {
+function AlertCard({ alert, onMessage, onResolve, onPress, loading }: AlertCardProps) {
   const receiverName = alert.careReceiver?.user?.fullName ?? 'Care Receiver';
   const typeColor = alertTypeColor(alert.type);
   const bg = cardBg(alert.type);
@@ -151,14 +153,17 @@ function AlertCard({ alert, onCheckIn, onResolve, onPress, loading }: AlertCardP
         <View style={c.actions}>
           <TouchableOpacity
             style={c.btnCheckIn}
-            onPress={onCheckIn}
+            onPress={onMessage}
             disabled={loading}
             activeOpacity={0.8}
           >
             {loading ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
-              <Text style={c.btnCheckInText}>Check In</Text>
+              <View style={c.btnCheckInRow}>
+                {/* <Ionicons name="chatbubble-ellipses-outline" size={16} color="#fff" /> */}
+                <Text style={c.btnCheckInText}>Message</Text>
+              </View>
             )}
           </TouchableOpacity>
           <TouchableOpacity
@@ -201,14 +206,14 @@ export default function AlertsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>('Crisis');
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { alerts, setAlerts, upsertAlert, isStale } = useAlertsStore();
+  // Only show the full-screen spinner when there's no cached data yet
+  const [loading, setLoading] = useState(alerts.length === 0);
   const [refreshing, setRefreshing] = useState(false);
-  const [actionLoading, setActionLoading] = useState<string | null>(null); // only used for resolve
+  const [actionLoading, setActionLoading] = useState<string | null>(null); // used for message + resolve
 
   const fetchAlerts = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
-    else setLoading(true);
     try {
       const res = await alertApi.getAll();
       setAlerts(res.data ?? []);
@@ -218,9 +223,18 @@ export default function AlertsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [setAlerts]);
 
-  useEffect(() => { fetchAlerts(); }, [fetchAlerts]);
+  // On focus: serve cached data instantly, refetch in the background only when stale
+  useFocusEffect(
+    useCallback(() => {
+      if (isStale()) {
+        fetchAlerts();
+      } else {
+        setLoading(false);
+      }
+    }, [fetchAlerts, isStale])
+  );
 
   // Filter alerts by tab
   const filtered = alerts.filter((a) => {
@@ -229,8 +243,24 @@ export default function AlertsScreen() {
     return a.status !== 'RESOLVED' && !isCritical(a);
   });
 
-  const handleCheckIn = (alertId: string) => {
-    router.push({ pathname: '/(app)/alert-detail', params: { id: alertId } });
+  const handleMessage = async (alert: Alert) => {
+    const userId = alert.careReceiver?.userId;
+    const name = alert.careReceiver?.user?.fullName ?? 'Care Receiver';
+    if (!userId) return;
+    setActionLoading(alert.id);
+    try {
+      const res = await chatApi.getOrCreateConversation(userId);
+      if (res.success && res.data) {
+        router.push({
+          pathname: '/(app)/chat-room',
+          params: { conversationId: res.data.id, userName: name, from: '/(app)/alerts' },
+        });
+      }
+    } catch {
+      // ignore
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const handleResolve = async (alertId: string) => {
@@ -238,7 +268,7 @@ export default function AlertsScreen() {
     try {
       const res = await alertApi.resolve(alertId);
       if (res.data) {
-        setAlerts((prev) => prev.map((a) => (a.id === alertId ? res.data! : a)));
+        upsertAlert(res.data);
       }
     } catch {
       // ignore
@@ -291,7 +321,7 @@ export default function AlertsScreen() {
                   key={alert.id}
                   alert={alert}
                   loading={actionLoading === alert.id}
-                  onCheckIn={() => handleCheckIn(alert.id)}
+                  onMessage={() => handleMessage(alert)}
                   onResolve={() => handleResolve(alert.id)}
                   onPress={() => router.push({ pathname: '/(app)/alert-detail', params: { id: alert.id } })}
                 />
@@ -328,15 +358,15 @@ const s = StyleSheet.create({
 
 const c = StyleSheet.create({
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: '#F3F3F3',
     borderRadius: 16,
     padding: 14,
     borderLeftWidth: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    // shadowColor: '#000',
+    // shadowOpacity: 0.05,
+    // shadowRadius: 6,
+    // shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
     gap: 10,
   },
   header: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
@@ -351,12 +381,13 @@ const c = StyleSheet.create({
   bubbleText: { fontSize: 13, fontFamily: F.i.regular, color: '#444', lineHeight: 19 },
   actions: { flexDirection: 'row', gap: 10 },
   btnCheckIn: {
-    flex: 1, backgroundColor: '#E53935', borderRadius: 10,
+    flex: 1, backgroundColor: '#E53935', borderRadius: 30,
     paddingVertical: 11, alignItems: 'center',
   },
+  btnCheckInRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   btnCheckInText: { fontSize: 14, fontFamily: F.m.bold, color: '#fff' },
   btnResolve: {
-    flex: 1, borderWidth: 1.5, borderColor: '#E53935', borderRadius: 10,
+    flex: 1, borderWidth: 1.5, borderColor: '#E53935', borderRadius: 30,
     paddingVertical: 11, alignItems: 'center',
   },
   btnResolveText: { fontSize: 14, fontFamily: F.m.bold, color: '#E53935' },

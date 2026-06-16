@@ -370,7 +370,7 @@ export default function SnapshotScreen() {
                       ) : null}
                       <View style={s.metaItem}>
                         <Profile size={13} color="#9CA3AF" variant="Linear" />
-                        <Text style={s.metaText}>{person}</Text>
+                        <Text style={s.metaText} numberOfLines={1}>{person}</Text>
                       </View>
                     </View>
                   </TouchableOpacity>
@@ -659,9 +659,9 @@ const s = StyleSheet.create({
   statusText: { fontSize: 10, fontFamily: F.m.bold, letterSpacing: 0.4 },
   taskTitle: { fontSize: 16, fontFamily: F.m.bold, color: '#111' },
   taskTitleDone: { color: '#9CA3AF' },
-  taskMeta: { flexDirection: 'row', gap: 16, marginTop: 2 },
-  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaText: { fontSize: 12, fontFamily: F.i.regular, color: '#9CA3AF' },
+  taskMeta: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 6, marginTop: 2 },
+  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
+  metaText: { fontSize: 12, fontFamily: F.i.regular, color: '#9CA3AF', flexShrink: 1 },
   taskCheckbox: {
     width: 32, height: 32, borderRadius: 16,
     borderWidth: 2.5, borderColor: '#E53935',

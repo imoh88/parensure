@@ -1,6 +1,8 @@
+import { authApi } from '@/lib/api/auth';
 import { F } from '@/lib/fonts';
 import { useProfilePhoto } from '@/lib/hooks/useProfilePhoto';
 import { useAuthStore } from '@/lib/store/authStore';
+import { storage } from '@/lib/utils/storage';
 import { AccountType } from '@/lib/types';
 import { useRouter } from 'expo-router';
 import {
@@ -52,9 +54,42 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const [showLogout, setShowLogout] = useState(false);
   const [showSwitch, setShowSwitch] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const { photoUrl: profileImageUri, uploading: uploadingPhoto, pickAndUpload: handleUploadPhoto } = useProfilePhoto();
 
   const initial = (user?.fullName ?? 'U').charAt(0).toUpperCase();
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Profile',
+      'Are you sure you want to delete your profile? This permanently removes your account and all associated data, and cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              const res = await authApi.deleteAccount();
+              if (res.success) {
+                // Wipe saved biometric credentials too — otherwise fingerprint
+                // login would restore the now-deleted account's stale token.
+                await storage.clearBiometricCredentials();
+                await logout(); // clears session → root layout redirects to auth
+              } else {
+                Alert.alert('Error', res.message ?? 'Could not delete your profile. Please try again.');
+              }
+            } catch (err: any) {
+              Alert.alert('Error', err?.response?.data?.message ?? 'Could not delete your profile. Please try again.');
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const roleLabel = (r: AccountType) =>
     r === 'CAREGIVER' ? 'Care Giver' : r === 'CARE_RECEIVER' ? 'Care Receiver' : 'Firm Admin';
@@ -121,16 +156,7 @@ export default function ProfileScreen() {
           label="Delete Profile"
           labelColor="#E84545"
           iconColor="#E84545"
-          onPress={() =>
-            Alert.alert(
-              'Delete Profile',
-              'Are you sure you want to delete your profile? This action cannot be undone.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Delete', style: 'destructive', onPress: () => {} },
-              ]
-            )
-          }
+          onPress={handleDeleteAccount}
         />
       </View>
 
@@ -140,6 +166,16 @@ export default function ProfileScreen() {
       </TouchableOpacity>
 
     </ScrollView>
+
+      {/* Deleting overlay */}
+      <Modal visible={deleting} transparent animationType="fade">
+        <View style={s.modalOverlay}>
+          <View style={s.deletingCard}>
+            <ActivityIndicator color="#E84545" size="large" />
+            <Text style={s.deletingText}>Deleting your profile…</Text>
+          </View>
+        </View>
+      </Modal>
 
       {/* Logout confirmation modal */}
       <Modal visible={showLogout} transparent animationType="fade" onRequestClose={() => setShowLogout(false)}>
@@ -267,6 +303,14 @@ const s = StyleSheet.create({
   },
   logoutConfirmText: { fontSize: 17, fontFamily: F.m.bold, color: '#FFF' },
   logoutCancelText: { fontSize: 15, fontFamily: F.m.semiBold, color: '#E84545' },
+
+  // ── Deleting overlay ──
+  deletingCard: {
+    backgroundColor: '#FFF', borderRadius: 20,
+    paddingHorizontal: 32, paddingVertical: 28,
+    alignItems: 'center', gap: 16,
+  },
+  deletingText: { fontSize: 15, fontFamily: F.m.semiBold, color: '#111827' },
 
   // ── Switch account sheet ──
   sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },

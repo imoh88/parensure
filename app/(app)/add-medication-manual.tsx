@@ -655,7 +655,8 @@ const s = StyleSheet.create({
   label: { fontSize: 14, fontFamily: F.m.semiBold, color: '#111', marginBottom: 8 },
   optional: { fontSize: 12, fontFamily: F.i.regular, color: '#9CA3AF' },
   input: {
-    backgroundColor: '#F3F4F6', borderRadius: 12,
+    backgroundColor: '#FFFFFF', borderRadius: 12,
+    borderWidth: 1, borderColor: '#E5E7EB',
     paddingHorizontal: 16, paddingVertical: 14,
     fontSize: 14, fontFamily: F.i.regular, color: '#111',
     marginBottom: 16,

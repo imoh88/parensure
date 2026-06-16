@@ -478,7 +478,12 @@ export default function MedicationScreen() {
       </View>
 
       {/* Tabs */}
-      <View style={s.tabs}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={s.tabs}
+        contentContainerStyle={s.tabsContent}
+      >
         {([['tasks', 'Tasks', nonMeds.length], ['medications', 'Medications', meds.length], ['appointments', 'Appointments', appts.length]] as [Tab, string, number][]).map(([tab, label, count]) => (
           <TouchableOpacity
             key={tab}
@@ -496,7 +501,7 @@ export default function MedicationScreen() {
             )}
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
 
       <ScrollView
         style={{ flex: 1 }}
@@ -672,7 +677,11 @@ const s = StyleSheet.create({
   addNew: { fontSize: 15, fontFamily: F.m.semiBold, color: '#E53935' },
 
   tabs: {
-    flexDirection: 'row', backgroundColor: '#F5F5F7',
+    backgroundColor: '#F5F5F7',
+    flexGrow: 0, flexShrink: 0,
+  },
+  tabsContent: {
+    flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 16, paddingBottom: 8, gap: 8,
   },
   tab: {
@@ -794,7 +803,8 @@ const s = StyleSheet.create({
   detailCardMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
   detailMetaChip: {
     fontSize: 12, fontFamily: F.m.semiBold, color: '#6B7280',
-    backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 50,
+    backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 50, overflow: 'hidden',
   },
   metaChipHigh: { backgroundColor: '#FEE2E2', color: '#B91C1C' },
 });

@@ -4,7 +4,7 @@
     "slug": "parensure",
     "version": "1.0.3",
     "orientation": "portrait",
-    "icon": "./assets/images/parensure-logo.png",
+    "icon": "./assets/images/icons/PHeart-xparent.png",
     "scheme": "parensure",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -23,7 +23,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/parensure-logo.png",
+        "foregroundImage": "./assets/images/icons/PHeart-xparent.png",
         "backgroundColor": "#ffffff"
       },
       "googleServicesFile": "./google-services.json",
@@ -57,7 +57,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/parensure-logo.png",
+          "image": "./assets/images/icons/PHeart-xparent.png",
           "imageWidth": 200,
           "imageHeight": 200,
           "resizeMode": "contain",

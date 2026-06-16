@@ -76,7 +76,7 @@ const COUNTRY_CODES = [
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { setAuth } = useAuthStore();
+  const { setAuth, logout } = useAuthStore();
 
   const [phone, setPhone] = useState('');
   const [selectedCountry, setSelectedCountry] = useState(COUNTRY_CODES[0]!);
@@ -118,11 +118,25 @@ export default function LoginScreen() {
 
       if (result.success) {
         const creds = await storage.getBiometricCredentials();
-        if (creds) {
-          await setAuth(creds.user, creds.token);
-          router.replace('/(app)');
-        } else {
+        if (!creds) {
           Alert.alert('Sign in required', 'Please sign in once with your phone or email to enable biometric login.');
+          return;
+        }
+        // Restore the session, then confirm with the server that the account
+        // still exists / the token is valid. A cached token alone must never
+        // grant access (e.g. the account may have been deleted).
+        await setAuth(creds.user, creds.token);
+        try {
+          const profile = await authApi.getProfile();
+          if (!profile.success) throw new Error('invalid session');
+          router.replace('/(app)');
+        } catch {
+          await storage.clearBiometricCredentials();
+          await logout();
+          Alert.alert(
+            'Account unavailable',
+            'This account no longer exists or your session has expired. Please sign in again.',
+          );
         }
       }
     } catch {

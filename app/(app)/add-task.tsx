@@ -9,6 +9,7 @@ import { taskCache } from '@/lib/utils/taskCache';
 import { storage } from '@/lib/utils/storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
+import { FileSystemUploadType, uploadAsync } from 'expo-file-system/legacy';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Add, ArrowDown2, ArrowLeft, CloseCircle, DocumentText, RowHorizontal, TickCircle } from 'iconsax-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
@@ -430,18 +431,25 @@ export default function AddTaskScreen() {
         if (!urlRes.success || !urlRes.data) throw new Error('Failed to get upload URL');
 
         const { url, key } = urlRes.data;
-        const uploadRes = await fetch(url, {
-          method: 'PUT',
+
+        // Stream the local file straight to S3. In React Native, reading a
+        // file:// URI into a blob and PUTting it is unreliable (empty body /
+        // silent hang), so use expo-file-system's binary upload instead.
+        const uploadRes = await uploadAsync(url, asset.uri, {
+          httpMethod: 'PUT',
+          uploadType: FileSystemUploadType.BINARY_CONTENT,
           headers: { 'Content-Type': file.mimeType },
-          body: await fetch(asset.uri).then((r) => r.blob()),
         });
 
-        if (!uploadRes.ok) throw new Error('Upload failed');
+        if (uploadRes.status < 200 || uploadRes.status >= 300) {
+          throw new Error(`S3 upload failed (${uploadRes.status}): ${uploadRes.body}`);
+        }
 
         setAttachments((prev) =>
           prev.map((a) => (a.id === fileId ? { ...a, key, uploading: false } : a))
         );
-      } catch {
+      } catch (err) {
+        console.error('[add-task] attachment upload failed:', err);
         setAttachments((prev) =>
           prev.map((a) =>
             a.id === fileId ? { ...a, uploading: false, error: 'Upload failed' } : a
@@ -577,6 +585,8 @@ export default function AddTaskScreen() {
   const removeSubtask = (i: number) =>
     setSubtasks((prev) => prev.filter((_, idx) => idx !== i));
 
+  const uploadingAttachment = attachments.some((a) => a.uploading);
+
   const selectedReceiver = receivers.find((r) => r.careReceiverId === selectedReceiverId);
   const receiverOptions = receivers.map((r) => ({ label: r.name, value: r.careReceiverId }));
   const categoryLabel = CATEGORIES.find((c) => c.value === category)?.label ?? 'Other';
@@ -584,6 +594,29 @@ export default function AddTaskScreen() {
   const handleSave = async () => {
     if (!title.trim()) { Alert.alert('Required', 'Please enter a task title.'); return; }
     if (!isCareReceiver && !selectedReceiverId) { Alert.alert('Required', 'Please assign the task to a care receiver.'); return; }
+
+    // Don't save while attachments are still uploading — their keys aren't
+    // ready yet, so they'd be silently dropped from the task.
+    if (attachments.some((a) => a.uploading)) {
+      Alert.alert('Please wait', 'An attachment is still uploading. Please wait for it to finish.');
+      return;
+    }
+
+    // Warn before discarding attachments that failed to upload.
+    const failed = attachments.filter((a) => a.error);
+    if (failed.length > 0) {
+      const proceed = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          'Attachment failed',
+          `${failed.length} attachment${failed.length > 1 ? 's' : ''} failed to upload and won't be saved. Save the task anyway?`,
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Save anyway', style: 'destructive', onPress: () => resolve(true) },
+          ],
+        );
+      });
+      if (!proceed) return;
+    }
 
     setSaving(true);
     try {
@@ -919,15 +952,15 @@ export default function AddTaskScreen() {
 
         {/* Actions */}
         <TouchableOpacity
-          style={[s.saveBtn, saving && { opacity: 0.7 }]}
+          style={[s.saveBtn, (saving || uploadingAttachment) && { opacity: 0.7 }]}
           onPress={handleSave}
-          disabled={saving}
+          disabled={saving || uploadingAttachment}
           activeOpacity={0.85}
         >
           {saving ? (
             <ActivityIndicator color="#FFF" />
           ) : (
-            <Text style={s.saveBtnText}>Save Task</Text>
+            <Text style={s.saveBtnText}>{uploadingAttachment ? 'Uploading attachment…' : 'Save Task'}</Text>
           )}
         </TouchableOpacity>
 

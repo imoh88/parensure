@@ -40,7 +40,10 @@ export default function ScanMedicationScreen() {
       Alert.alert('Permission needed', 'Camera access is required to scan medication.');
       return;
     }
-    const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.4 });
+    // No allowsEditing: the Android OEM crop activity is unreliable (the crop
+    // step can dead-end with no way to confirm), and the full label image is
+    // better for the AI scan anyway.
+    const result = await ImagePicker.launchCameraAsync({ allowsEditing: false, quality: 0.4 });
     if (!result.canceled && result.assets[0]) {
       setImageUri(result.assets[0].uri);
       await runScan(result.assets[0].uri, result.assets[0].mimeType ?? 'image/jpeg');
@@ -48,7 +51,7 @@ export default function ScanMedicationScreen() {
   };
 
   const openGallery = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, quality: 0.4 });
+    const result = await ImagePicker.launchImageLibraryAsync({ allowsEditing: false, quality: 0.4 });
     if (!result.canceled && result.assets[0]) {
       setImageUri(result.assets[0].uri);
       await runScan(result.assets[0].uri, result.assets[0].mimeType ?? 'image/jpeg');

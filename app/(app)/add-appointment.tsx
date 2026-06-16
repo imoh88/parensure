@@ -5,6 +5,7 @@ import { useAuthStore } from '@/lib/store/authStore';
 import { appointmentCache } from '@/lib/utils/appointmentCache';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
+import { FileSystemUploadType, uploadAsync } from 'expo-file-system/legacy';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Add, ArrowDown2, ArrowLeft, CloseCircle, DocumentText, Location, TickCircle, Trash } from 'iconsax-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
@@ -244,33 +245,50 @@ export default function AddAppointmentScreen() {
   const [uploadingFile, setUploadingFile] = useState(false);
 
   const handlePickFile = async () => {
-    const result = await DocumentPicker.getDocumentAsync({
-      type: ['application/pdf', 'image/*', 'application/msword',
-             'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
-      copyToCacheDirectory: true,
-      multiple: false,
-    });
-    if (result.canceled || !result.assets[0]) return;
-    const asset = result.assets[0];
+    let asset: DocumentPicker.DocumentPickerAsset;
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'image/*', 'application/msword',
+               'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      asset = result.assets[0];
+    } catch (err: any) {
+      Alert.alert('File picker error', err?.message ?? 'Could not open the file picker.');
+      return;
+    }
+
     const filename = asset.name;
     const mimeType = asset.mimeType ?? 'application/octet-stream';
 
     setUploadingFile(true);
     try {
       const urlRes = await caregiverApi.getAppointmentUploadUrl(filename, mimeType);
-      if (!urlRes.success || !urlRes.data) throw new Error('Could not get upload URL');
+      if (!urlRes.success || !urlRes.data) throw new Error('Could not get upload URL from server');
       const { url, key } = urlRes.data;
 
-      const fileData = await fetch(asset.uri);
-      const blob = await fileData.blob();
-      const s3Res = await fetch(url, {
-        method: 'PUT', body: blob, headers: { 'Content-Type': mimeType },
+      // Stream the local file straight to S3. In React Native, reading a
+      // file:// URI into a blob and PUTting it is unreliable (empty body /
+      // silent hang), so use expo-file-system's binary upload instead.
+      const s3Res = await uploadAsync(url, asset.uri, {
+        httpMethod: 'PUT',
+        uploadType: FileSystemUploadType.BINARY_CONTENT,
+        headers: { 'Content-Type': mimeType },
       });
-      if (!s3Res.ok) throw new Error(`Upload failed (${s3Res.status})`);
+      if (s3Res.status < 200 || s3Res.status >= 300) {
+        throw new Error(`S3 upload failed (${s3Res.status}): ${s3Res.body}`);
+      }
 
       setAttachments((prev) => [...prev, { name: filename, key }]);
     } catch (err: any) {
-      Alert.alert('Upload failed', err?.message ?? 'Could not upload file. Please try again.');
+      // Surface the real cause: a 404 here means the backend route isn't deployed
+      const status = err?.response?.status;
+      const detail = status
+        ? `Server returned ${status}. The upload endpoint may not be deployed yet.`
+        : err?.message ?? 'Could not upload file. Please try again.';
+      Alert.alert('Upload failed', detail);
     } finally {
       setUploadingFile(false);
     }
@@ -597,34 +615,36 @@ export default function AddAppointmentScreen() {
           </View>
         </View>
 
-        {/* Attachment */}
-        <View style={s.attachBox}>
+        {/* Attachment — whole box is tappable (matches the task screen) */}
+        <TouchableOpacity
+          style={s.attachBox}
+          onPress={handlePickFile}
+          disabled={uploadingFile}
+          activeOpacity={0.8}
+        >
           <DocumentText size={32} color="#D1D5DB" variant="Linear" />
           <Text style={s.attachTitle}>Add an attachment</Text>
           <Text style={s.attachSub}>Add photos, medical reports, or documents (Max 10MB)</Text>
-          <TouchableOpacity
-            style={[s.chooseFileBtn, uploadingFile && { opacity: 0.6 }]}
-            onPress={handlePickFile}
-            disabled={uploadingFile}
-            activeOpacity={0.8}
-          >
-            <Text style={s.chooseFileText}>{uploadingFile ? 'Uploading…' : 'Choose File'}</Text>
-          </TouchableOpacity>
+          <View style={[s.chooseFileBtn, uploadingFile && { opacity: 0.6 }]}>
+            {uploadingFile
+              ? <ActivityIndicator size="small" color="#E53935" />
+              : <Text style={s.chooseFileText}>Choose File</Text>}
+          </View>
+        </TouchableOpacity>
 
-          {attachments.length > 0 && (
-            <View style={s.attachList}>
-              {attachments.map((a) => (
-                <View key={a.key} style={s.attachChip}>
-                  <DocumentText size={14} color="#E53935" variant="Linear" />
-                  <Text style={s.attachChipText} numberOfLines={1}>{a.name}</Text>
-                  <TouchableOpacity onPress={() => removeAttachment(a.key)} hitSlop={8}>
-                    <Trash size={14} color="#9CA3AF" variant="Linear" />
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
+        {attachments.length > 0 && (
+          <View style={s.attachList}>
+            {attachments.map((a) => (
+              <View key={a.key} style={s.attachChip}>
+                <DocumentText size={14} color="#E53935" variant="Linear" />
+                <Text style={s.attachChipText} numberOfLines={1}>{a.name}</Text>
+                <TouchableOpacity onPress={() => removeAttachment(a.key)} hitSlop={8}>
+                  <Trash size={14} color="#9CA3AF" variant="Linear" />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
 
         {/* Actions */}
         <TouchableOpacity
