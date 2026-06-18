@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 
 const ITEMS = [
-  'Create task',
+  'Create Task',
   'Add Appointment',
   'Add Medication',
   'Add Care Recipient',

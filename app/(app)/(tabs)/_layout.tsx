@@ -35,9 +35,9 @@ function TabItem({
   );
 }
 
-const CAREGIVER_FAB_ITEMS     = ['Create task', 'Add Appointment', 'Add medication', 'Add Care Recipient'] as const;
-const FIRM_ADMIN_FAB_ITEMS    = ['Add Appointment', 'Add medication', 'Add Care Recipient'] as const;
-const CARE_RECEIVER_FAB_ITEMS = ['Create task', 'Add Appointment', 'Add medication', 'Add Care Giver'] as const;
+const CAREGIVER_FAB_ITEMS     = ['Create Task', 'Add Appointment', 'Add Medication', 'Add Care Recipient'] as const;
+const FIRM_ADMIN_FAB_ITEMS    = ['Add Appointment', 'Add Medication', 'Add Care Recipient'] as const;
+const CARE_RECEIVER_FAB_ITEMS = ['Create Task', 'Add Appointment', 'Add Medication', 'Add Care Giver'] as const;
 type FabItem =
   | typeof CAREGIVER_FAB_ITEMS[number]
   | typeof FIRM_ADMIN_FAB_ITEMS[number]
@@ -135,10 +135,10 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
               style={s.option}
               onPress={() => {
                 closeFab();
-                if (label === 'Create task')                                     router.push('/(app)/add-task');
+                if (label === 'Create Task')                                     router.push('/(app)/add-task');
                 else if (label === 'Add Appointment')                            router.push('/(app)/add-appointment');
                 else if (label === 'Add Care Recipient' || label === 'Add Care Giver') router.push('/(app)/add-care-receiver');
-                else if (label === 'Add medication')                             router.push('/(app)/add-medication');
+                else if (label === 'Add Medication')                             router.push('/(app)/add-medication');
               }}
               activeOpacity={0.75}
             >

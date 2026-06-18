@@ -1,5 +1,11 @@
 import { apiClient } from './client';
-import { ApiResponse, CareReceiverProfile, CaregiverInvite } from '../types';
+import {
+  ApiResponse,
+  CareReceiverProfile,
+  CaregiverInvite,
+  HealthCheckInput,
+  LatestHealthCheck,
+} from '../types';
 
 export const careReceiverApi = {
   getProfile: async (): Promise<ApiResponse<CareReceiverProfile>> => {
@@ -34,6 +40,17 @@ export const careReceiverApi = {
 
   addCaregiver: async (caregiverProfileId: string): Promise<ApiResponse<any>> => {
     const response = await apiClient.post('/care-receiver/add-caregiver', { caregiverProfileId });
+    return response.data;
+  },
+
+  // ── Health checks (heart rate, stability test, daily vitals) ───────────────
+  logHealthCheck: async (data: HealthCheckInput): Promise<ApiResponse<any>> => {
+    const response = await apiClient.post('/care-receiver/health-check', data);
+    return response.data;
+  },
+
+  getLatestHealthCheck: async (): Promise<ApiResponse<LatestHealthCheck>> => {
+    const response = await apiClient.get('/care-receiver/health-check/latest');
     return response.data;
   },
 };

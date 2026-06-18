@@ -1,10 +1,14 @@
 import { alertApi } from '@/lib/api/alert';
+import { careReceiverApi } from '@/lib/api/careReceiver';
 import { F } from '@/lib/fonts';
 import { useAuthStore } from '@/lib/store/authStore';
+import { LatestHealthCheck } from '@/lib/types';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { Activity, Drop, Heart, Man } from 'iconsax-react-native';
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   ScrollView,
   StyleSheet,
@@ -31,6 +35,103 @@ export default function HealthScreen() {
   const { user } = useAuthStore();
   const firstName = user?.fullName?.split(' ')[0] ?? 'there';
   const [sosPending, setSosPending] = useState(false);
+
+  const [latest, setLatest] = useState<LatestHealthCheck | null>(null);
+  const [bpInput, setBpInput] = useState('');
+  const [sugarInput, setSugarInput] = useState('');
+  const [completing, setCompleting] = useState(false);
+
+  const loadLatest = useCallback(async () => {
+    try {
+      const res = await careReceiverApi.getLatestHealthCheck();
+      if (res.data) setLatest(res.data);
+    } catch {
+      // non-fatal: keep showing placeholders
+    }
+  }, []);
+
+  // Refresh whenever the screen regains focus (e.g. returning from a check).
+  useFocusEffect(
+    useCallback(() => {
+      loadLatest();
+    }, [loadLatest])
+  );
+
+  // Save a single blood pressure / blood sugar reading via the "+" buttons.
+  async function quickLog(field: 'bloodPressure' | 'bloodSugar') {
+    if (field === 'bloodPressure') {
+      const value = bpInput.trim();
+      if (!/^\d{2,3}\/\d{2,3}$/.test(value)) {
+        Alert.alert('Invalid entry', 'Enter blood pressure like 120/80.');
+        return;
+      }
+      try {
+        await careReceiverApi.logHealthCheck({ bloodPressure: value });
+        setBpInput('');
+        await loadLatest();
+      } catch {
+        Alert.alert('Error', 'Could not save. Please try again.');
+      }
+    } else {
+      const num = parseInt(sugarInput.trim(), 10);
+      if (!Number.isFinite(num) || num <= 0) {
+        Alert.alert('Invalid entry', 'Enter a blood sugar value in mg/dL.');
+        return;
+      }
+      try {
+        await careReceiverApi.logHealthCheck({ bloodSugar: num });
+        setSugarInput('');
+        await loadLatest();
+      } catch {
+        Alert.alert('Error', 'Could not save. Please try again.');
+      }
+    }
+  }
+
+  async function handleMarkCompleted() {
+    if (completing) return;
+
+    // Gather any readings still typed into the inputs.
+    const payload: { bloodPressure?: string; bloodSugar?: number } = {};
+    const bp = bpInput.trim();
+    if (bp) {
+      if (!/^\d{2,3}\/\d{2,3}$/.test(bp)) {
+        Alert.alert('Invalid entry', 'Enter blood pressure like 120/80.');
+        return;
+      }
+      payload.bloodPressure = bp;
+    }
+    const sugar = sugarInput.trim();
+    if (sugar) {
+      const num = parseInt(sugar, 10);
+      if (!Number.isFinite(num) || num <= 0) {
+        Alert.alert('Invalid entry', 'Enter a blood sugar value in mg/dL.');
+        return;
+      }
+      payload.bloodSugar = num;
+    }
+
+    setCompleting(true);
+    try {
+      if (payload.bloodPressure || payload.bloodSugar) {
+        await careReceiverApi.logHealthCheck(payload);
+        setBpInput('');
+        setSugarInput('');
+      }
+      await loadLatest();
+      Alert.alert('Logged', "Today's health check has been recorded.");
+    } catch {
+      Alert.alert('Error', 'Could not save your daily log. Please try again.');
+    } finally {
+      setCompleting(false);
+    }
+  }
+
+  const hrDisplay = latest?.heartRate != null ? String(latest.heartRate) : '--';
+  const bpDisplay = latest?.bloodPressure ?? '--';
+  const stability = latest?.stabilityScore;
+  const fallRisk =
+    stability == null ? '--' : stability >= 80 ? 'Low' : stability >= 55 ? 'Moderate' : 'High';
 
   function handleSos() {
     Alert.alert(
@@ -85,7 +186,7 @@ export default function HealthScreen() {
             </View>
           </View>
           <Text style={s.hrValue}>
-            72 <Text style={s.hrUnit}>BPM</Text>
+            {hrDisplay} <Text style={s.hrUnit}>BPM</Text>
           </Text>
           <View style={s.barsRow}>
             {HR_BARS.map((h, i) => (
@@ -113,8 +214,8 @@ export default function HealthScreen() {
               </View>
               <Text style={s.miniTitle}>Blood Pressure</Text>
             </View>
-            <Text style={s.bpValue}>118/78</Text>
-            <Text style={s.bpSub}>MMHG · OPTIMAL</Text>
+            <Text style={s.bpValue}>{bpDisplay}</Text>
+            <Text style={s.bpSub}>MMHG</Text>
             <View style={s.bpBar} />
           </View>
 
@@ -125,8 +226,10 @@ export default function HealthScreen() {
               </View>
               <Text style={s.miniTitle}>Fall Risk</Text>
             </View>
-            <Text style={s.fallValue}>Low</Text>
-            <Text style={s.fallSub}>STABILITY: 94%</Text>
+            <Text style={s.fallValue}>{fallRisk}</Text>
+            <Text style={s.fallSub}>
+              STABILITY: {stability != null ? `${stability}%` : '--'}
+            </Text>
             <View style={s.dotsRow}>
               <View style={[s.dot, { backgroundColor: '#FECDD3' }]} />
               <View style={[s.dot, { backgroundColor: '#FECDD3' }]} />
@@ -198,9 +301,11 @@ export default function HealthScreen() {
                 style={s.logInput}
                 placeholder="120/80"
                 placeholderTextColor="#C4C4C4"
-                keyboardType="numeric"
+                keyboardType="numbers-and-punctuation"
+                value={bpInput}
+                onChangeText={setBpInput}
               />
-              <TouchableOpacity style={s.addBtn} activeOpacity={0.8}>
+              <TouchableOpacity style={s.addBtn} activeOpacity={0.8} onPress={() => quickLog('bloodPressure')}>
                 <Text style={s.addBtnText}>+</Text>
               </TouchableOpacity>
             </View>
@@ -217,8 +322,10 @@ export default function HealthScreen() {
                 placeholder="95 mg/dL"
                 placeholderTextColor="#C4C4C4"
                 keyboardType="numeric"
+                value={sugarInput}
+                onChangeText={setSugarInput}
               />
-              <TouchableOpacity style={s.addBtn} activeOpacity={0.8}>
+              <TouchableOpacity style={s.addBtn} activeOpacity={0.8} onPress={() => quickLog('bloodSugar')}>
                 <Text style={s.addBtnText}>+</Text>
               </TouchableOpacity>
             </View>
@@ -226,8 +333,17 @@ export default function HealthScreen() {
         </View>
 
         {/* Mark as Completed */}
-        <TouchableOpacity style={s.completedBtn} activeOpacity={0.85}>
-          <Text style={s.completedBtnText}>Mark as Completed</Text>
+        <TouchableOpacity
+          style={[s.completedBtn, completing && { opacity: 0.7 }]}
+          activeOpacity={0.85}
+          onPress={handleMarkCompleted}
+          disabled={completing}
+        >
+          {completing ? (
+            <ActivityIndicator color="#FFF" />
+          ) : (
+            <Text style={s.completedBtnText}>Mark as Completed</Text>
+          )}
         </TouchableOpacity>
       </ScrollView>
 

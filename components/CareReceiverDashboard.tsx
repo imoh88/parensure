@@ -21,6 +21,7 @@ import React, { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert as RNAlert,
+  Image,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -201,19 +202,27 @@ function EmptyState({ onAddCaregiver, refreshControl }: { onAddCaregiver: () => 
       showsVerticalScrollIndicator={false}
       refreshControl={refreshControl}
     >
-      <TouchableOpacity style={e.profileBanner} onPress={() => router.push('/(auth)/complete-profile')} activeOpacity={0.85}>
-        <View style={e.gaugeWrap}>
-          <ProfileGauge pct={completion} />
-          <Text style={e.gaugeText}>{completion}%</Text>
-        </View>
-        <View style={e.bannerText}>
-          <Text style={e.bannerTitle}>Complete Your Profile</Text>
-          <Text style={e.bannerSub}>Finish setting up your profile to unlock personalized care.</Text>
-        </View>
-        <View style={e.bannerArrow}>
-          <ArrowRight size={16} color="#FFF" variant="Linear" />
-        </View>
-      </TouchableOpacity>
+      <Image
+        source={require('@/assets/images/parensure-logo.png')}
+        style={e.logo}
+        resizeMode="contain"
+      />
+
+      {completion < 100 && (
+        <TouchableOpacity style={e.profileBanner} onPress={() => router.push('/(auth)/complete-profile')} activeOpacity={0.85}>
+          <View style={e.gaugeWrap}>
+            <ProfileGauge pct={completion} />
+            <Text style={e.gaugeText}>{completion}%</Text>
+          </View>
+          <View style={e.bannerText}>
+            <Text style={e.bannerTitle}>Complete Your Profile</Text>
+            <Text style={e.bannerSub}>Finish setting up your profile to unlock personalized care.</Text>
+          </View>
+          <View style={e.bannerArrow}>
+            <ArrowRight size={16} color="#FFF" variant="Linear" />
+          </View>
+        </TouchableOpacity>
+      )}
 
       <View style={e.illustrationWrap}>
         <View style={e.outerCircle}>
@@ -636,10 +645,11 @@ const shared = StyleSheet.create({
 const e = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F5F5F7' },
   container: { alignItems: 'center', paddingHorizontal: 24, paddingBottom: 100 },
+  logo: { width: 42, height: 42, marginTop: 8, marginBottom: 20 },
   profileBanner: {
     width: '100%', backgroundColor: '#FFF', borderRadius: 16, padding: 14,
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    marginTop: 16, marginBottom: 32,
+    marginBottom: 32,
     shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 }, elevation: 3,
   },

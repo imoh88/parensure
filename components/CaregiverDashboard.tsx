@@ -9,7 +9,7 @@ import { appointmentCache } from '@/lib/utils/appointmentCache';
 import { taskCache } from '@/lib/utils/taskCache';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -24,6 +24,16 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function calcProfileCompletion(user: any): number {
+  const fields = [
+    user?.fullName, user?.phone, user?.dateOfBirth, user?.gender,
+    user?.country, user?.state, user?.city, user?.homeAddress,
+    user?.timezone, user?.profileImageKey,
+  ];
+  return Math.round((fields.filter(Boolean).length / fields.length) * 100);
+}
 
 // ─── Gauge ────────────────────────────────────────────────────────────────────
 const G_SIZE = 64;
@@ -167,7 +177,7 @@ const TAG_META: Record<string, { color: string; bg: string; border: string }> = 
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function CaregiverDashboard() {
-  const { user } = useAuthStore();
+  const { user, selfCareReceiverId } = useAuthStore();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -189,8 +199,38 @@ export default function CaregiverDashboard() {
   const wellnessChecked = useRef(false);
   const [menuVisible, setMenuVisible] = useState(false);
 
-  const profilePct = 80;
+  const profilePct = calcProfileCompletion(user);
   const firstName = user?.fullName?.split(' ')[0] ?? 'there';
+
+  // Include the caregiver's own care-receiver profile (if they have one) as a
+  // selectable entry, appended after their real care receivers, so they can
+  // view and manage their own care from the dashboard too.
+  const selfBooking = useMemo<BookingWithReceiver | null>(() => {
+    if (!selfCareReceiverId || !user) return null;
+    return {
+      id: 'self',
+      careReceiverId: selfCareReceiverId,
+      status: 'ACTIVE',
+      careReceiver: {
+        id: selfCareReceiverId,
+        userId: user.id,
+        user: {
+          id: user.id,
+          fullName: user.fullName ?? 'Me',
+          profileImageKey: user.profileImageKey,
+          relationship: 'Me',
+        },
+      },
+    };
+  }, [selfCareReceiverId, user]);
+
+  const displayBookings = useMemo(
+    () => (selfBooking ? [...bookings, selfBooking] : bookings),
+    [selfBooking, bookings]
+  );
+
+  const selectedBooking = displayBookings[selectedIdx] ?? null;
+  const selectedCareReceiverId = selectedBooking?.careReceiverId;
 
   const fetchBookings = useCallback(async (force = false) => {
     if (!force && !isStale()) return;
@@ -236,11 +276,10 @@ export default function CaregiverDashboard() {
       setLoadingBookings(false); // data is fresh — never leave spinner running
     }
 
-    const careReceiverId = bookings[selectedIdx]?.careReceiverId;
-    if (careReceiverId) {
-      fetchTasks(careReceiverId);
-      fetchAppointments(careReceiverId);
-      fetchActivityLog(careReceiverId);
+    if (selectedCareReceiverId) {
+      fetchTasks(selectedCareReceiverId);
+      fetchAppointments(selectedCareReceiverId);
+      fetchActivityLog(selectedCareReceiverId);
     }
 
     // Show wellness popup once per session when screen is focused
@@ -254,7 +293,7 @@ export default function CaregiverDashboard() {
         })
         .catch(() => { /* silent */ });
     }
-  }, [fetchBookings, isStale, fetchTasks, fetchAppointments, fetchActivityLog, bookings, selectedIdx]));
+  }, [fetchBookings, isStale, fetchTasks, fetchAppointments, fetchActivityLog, selectedCareReceiverId]));
 
   const fetchTasks = useCallback(async (careReceiverId: string) => {
     setLoadingTasks(true);
@@ -279,16 +318,14 @@ export default function CaregiverDashboard() {
   }, []);
 
   useEffect(() => {
-    const careReceiverId = bookings[selectedIdx]?.careReceiverId;
-    if (careReceiverId) fetchTasks(careReceiverId);
+    if (selectedCareReceiverId) fetchTasks(selectedCareReceiverId);
     else setTasks([]);
-  }, [selectedIdx, bookings, fetchTasks]);
+  }, [selectedCareReceiverId, fetchTasks]);
 
   useEffect(() => {
-    const careReceiverId = bookings[selectedIdx]?.careReceiverId;
-    if (careReceiverId) fetchAppointments(careReceiverId);
+    if (selectedCareReceiverId) fetchAppointments(selectedCareReceiverId);
     else setAppointments([]);
-  }, [selectedIdx, bookings, fetchAppointments]);
+  }, [selectedCareReceiverId, fetchAppointments]);
 
   const fetchActivityLog = useCallback(async (careReceiverId: string) => {
     setLoadingActivity(true);
@@ -303,13 +340,11 @@ export default function CaregiverDashboard() {
   }, []);
 
   useEffect(() => {
-    const careReceiverId = bookings[selectedIdx]?.careReceiverId;
-    if (careReceiverId) fetchActivityLog(careReceiverId);
+    if (selectedCareReceiverId) fetchActivityLog(selectedCareReceiverId);
     else setActivityLog([]);
-  }, [selectedIdx, bookings, fetchActivityLog]);
+  }, [selectedCareReceiverId, fetchActivityLog]);
 
-  const hasReceivers = bookings.length > 0;
-  const selectedBooking = bookings[selectedIdx] ?? null;
+  const hasReceivers = displayBookings.length > 0;
   const selectedName = selectedBooking?.careReceiver?.user?.fullName ?? '';
   const selectedFirstName = selectedName.split(' ')[0] ?? '';
 
@@ -331,7 +366,9 @@ export default function CaregiverDashboard() {
   );
 
   // ─── Profile completion card ───────────────────────────────────────────────
-  const renderCompletionCard = () => (
+  const renderCompletionCard = () => {
+    if (profilePct >= 100) return null;
+    return (
     <TouchableOpacity
       style={s.completionCard}
       onPress={() => router.push({ pathname: '/(app)/edit-profile', params: { from: 'dashboard' } })}
@@ -355,7 +392,8 @@ export default function CaregiverDashboard() {
         <Ionicons name="arrow-forward" size={16} color="#FFF" />
       </View>
     </TouchableOpacity>
-  );
+    );
+  };
 
   // ─── Empty state ───────────────────────────────────────────────────────────
   const renderEmptyState = () => (
@@ -393,7 +431,7 @@ export default function CaregiverDashboard() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={s.receiversScroll}
       >
-        {bookings.map((booking, idx) => {
+        {displayBookings.map((booking, idx) => {
           const rcvUser = booking.careReceiver?.user;
           const name = rcvUser?.fullName ?? 'Unknown';
           const relationship = rcvUser?.relationship;

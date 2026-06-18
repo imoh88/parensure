@@ -65,7 +65,15 @@
         }
       ],
       "@react-native-community/datetimepicker",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "Parensure uses the camera to measure your heart rate by detecting your pulse through your fingertip.",
+          "enableMicrophonePermission": false,
+          "enableCodeScanner": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false,

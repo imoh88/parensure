@@ -98,6 +98,22 @@ export interface ApiResponse<T> {
   data?: T;
 }
 
+export interface HealthCheckInput {
+  heartRate?: number;
+  stabilityScore?: number;
+  bloodPressure?: string;
+  bloodSugar?: number;
+}
+
+export interface LatestHealthCheck {
+  heartRate: number | null;
+  stabilityScore: number | null;
+  bloodPressure: string | null;
+  bloodSugar: number | null;
+  heartRateAt: string | null;
+  stabilityAt: string | null;
+}
+
 export interface AuthResponse {
   token: string;
   user: User;

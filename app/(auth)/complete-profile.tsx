@@ -1,5 +1,6 @@
 import { authApi } from '@/lib/api/auth';
 import { F } from '@/lib/fonts';
+import { useProfilePhoto } from '@/lib/hooks/useProfilePhoto';
 import { useAuthStore } from '@/lib/store/authStore';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
@@ -141,6 +142,17 @@ const COUNTRY_CODES = [
   { flag: '🇨🇦', code: '+1' },
   { flag: '🇮🇳', code: '+91' },
 ];
+
+// Split a stored E.164 number (e.g. "+2348012345678") into its country-code
+// prefix (matched against COUNTRY_CODES) and the local part. Longest code first
+// so multi-digit codes win over shorter prefixes.
+function parseStoredPhone(stored?: string): { country: { flag: string; code: string }; local: string } {
+  if (!stored) return { country: COUNTRY_CODES[0]!, local: '' };
+  const byLength = [...COUNTRY_CODES].sort((a, b) => b.code.length - a.code.length);
+  const match = byLength.find((c) => stored.startsWith(c.code));
+  if (match) return { country: match, local: stored.slice(match.code.length) };
+  return { country: COUNTRY_CODES[0]!, local: stored.replace(/^\+/, '') };
+}
 
 const GENDER_OPTIONS = [
   { label: 'Male', value: 'MALE' },
@@ -402,8 +414,9 @@ export default function CompleteProfileScreen() {
   const nameParts = (user?.fullName ?? '').split(' ');
   const [firstName, setFirstName] = useState(nameParts[0] ?? '');
   const [lastName, setLastName] = useState(nameParts.slice(1).join(' '));
-  const [phone, setPhone] = useState(user?.phone?.replace(/^\+\d+/, '') ?? '');
-  const [selectedCountryCode, setSelectedCountryCode] = useState(COUNTRY_CODES[0]!);
+  const parsedPhone = parseStoredPhone(user?.phone);
+  const [phone, setPhone] = useState(parsedPhone.local);
+  const [selectedCountryCode, setSelectedCountryCode] = useState(parsedPhone.country);
   const [dateOfBirth, setDateOfBirth] = useState<Date | null>(
     user?.dateOfBirth ? new Date(user.dateOfBirth) : null
   );
@@ -419,6 +432,8 @@ export default function CompleteProfileScreen() {
     TIMEZONE_OPTIONS.find(o => o.label === user?.timezone || o.value === user?.timezone)?.value ?? ''
   );
   const [saving, setSaving] = useState(false);
+
+  const { photoUrl, uploading, pickAndUpload } = useProfilePhoto();
 
   const isCaregiver = user?.accountType === 'CAREGIVER';
 
@@ -481,12 +496,19 @@ export default function CompleteProfileScreen() {
 
         {/* Avatar */}
         <View style={styles.avatarWrapper}>
-          <Image
-            source={require('@/assets/images/upload-image.png')}
-            style={styles.avatar}
-          />
-          <TouchableOpacity>
-            <Text style={styles.uploadText}>Upload Photo</Text>
+          <TouchableOpacity onPress={pickAndUpload} activeOpacity={0.8} disabled={uploading}>
+            <Image
+              source={photoUrl ? { uri: photoUrl } : require('@/assets/images/upload-image.png')}
+              style={styles.avatar}
+            />
+            {uploading && (
+              <View style={styles.avatarOverlay}>
+                <ActivityIndicator color="#FFFFFF" />
+              </View>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity onPress={pickAndUpload} disabled={uploading}>
+            <Text style={styles.uploadText}>{uploading ? 'Uploading…' : 'Upload Photo'}</Text>
           </TouchableOpacity>
         </View>
 
@@ -784,6 +806,13 @@ const styles = StyleSheet.create({
 
   avatarWrapper: { alignItems: 'center', marginBottom: 28, gap: 10 },
   avatar: { width: 96, height: 96, borderRadius: 48 },
+  avatarOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 48,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   uploadText: { fontSize: 15, fontFamily: F.m.semiBold, color: '#E84545' },
 
   sectionLabel: {

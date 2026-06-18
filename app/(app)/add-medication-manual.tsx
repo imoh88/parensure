@@ -149,7 +149,7 @@ export default function AddMedicationManualScreen() {
   }>();
 
   const goBack = () => router.back();
-  const { activeRole } = useAuthStore();
+  const { activeRole, selfCareReceiverId, user } = useAuthStore();
   const isCareReceiver = activeRole === 'CARE_RECEIVER';
 
   const [phase, setPhase] = useState<1 | 2>(1);
@@ -162,18 +162,30 @@ export default function AddMedicationManualScreen() {
 
   const loadReceivers = useCallback(async () => {
     if (isCareReceiver) { setLoadingReceivers(false); return; }
+    setLoadingReceivers(true);
+
+    // Build the list with the caregiver's own care-receiver profile first, so a
+    // failed bookings request can't drop the self entry (mirrors add-task).
+    const list: Receiver[] = [];
+    if (selfCareReceiverId) {
+      list.push({ careReceiverId: selfCareReceiverId, name: `${user?.fullName ?? 'Me'} (me)` });
+    }
+
     try {
       const res = await caregiverApi.getBookings();
       if (res.success && res.data) {
-        const list: Receiver[] = (res.data as any[])
+        const bookingList: Receiver[] = (res.data as any[])
           .filter((b) => b.careReceiver?.user)
           .map((b) => ({ careReceiverId: b.careReceiverId, name: b.careReceiver?.user?.fullName ?? 'Unknown' }));
-        setReceivers(list);
-        if (list.length > 0 && list[0]) setSelectedReceiverId(list[0].careReceiverId);
+        list.push(...bookingList);
       }
-    } catch { /* silently fail */ }
-    finally { setLoadingReceivers(false); }
-  }, []);
+    } catch { /* bookings failed — self entry stays in the list */ }
+    finally {
+      setReceivers(list);
+      if (list.length > 0 && list[0]) setSelectedReceiverId(list[0].careReceiverId);
+      setLoadingReceivers(false);
+    }
+  }, [isCareReceiver, selfCareReceiverId, user?.fullName]);
 
   useEffect(() => { loadReceivers(); }, [loadReceivers]);
 
@@ -293,7 +305,7 @@ export default function AddMedicationManualScreen() {
 
   if (phase === 1) {
     return (
-      <ScreenWrapper bg="#F5F5F7" avoidKeyboard={false}>
+      <ScreenWrapper bg="#F5F5F7">
         {header}
         {progress}
 
@@ -301,6 +313,8 @@ export default function AddMedicationManualScreen() {
           contentContainerStyle={s.scroll}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          automaticallyAdjustKeyboardInsets
         >
           <Text style={s.title}>New Medication</Text>
           <Text style={s.subtitle}>
@@ -445,7 +459,7 @@ export default function AddMedicationManualScreen() {
   // ─── Phase 2 render ────────────────────────────────────────────────────────
 
   return (
-    <ScreenWrapper bg="#F5F5F7" avoidKeyboard={false}>
+    <ScreenWrapper bg="#F5F5F7">
       {header}
       {progress}
 
@@ -453,6 +467,8 @@ export default function AddMedicationManualScreen() {
         contentContainerStyle={s.scroll}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets
       >
         <Text style={s.title}>New Medication</Text>
         <Text style={s.subtitle}>

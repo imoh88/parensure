@@ -9,7 +9,6 @@ import { taskCache } from '@/lib/utils/taskCache';
 import { storage } from '@/lib/utils/storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
-import { FileSystemUploadType, uploadAsync } from 'expo-file-system/legacy';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Add, ArrowDown2, ArrowLeft, CloseCircle, DocumentText, RowHorizontal, TickCircle } from 'iconsax-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
@@ -427,24 +426,31 @@ export default function AddTaskScreen() {
       setAttachments((prev) => [...prev, file]);
 
       try {
+        // Step 1: get presigned S3 PUT URL + key from backend (content-type is signed into URL)
         const urlRes = await caregiverApi.getTaskUploadUrl(asset.name, file.mimeType);
         if (!urlRes.success || !urlRes.data) throw new Error('Failed to get upload URL');
 
         const { url, key } = urlRes.data;
 
-        // Stream the local file straight to S3. In React Native, reading a
-        // file:// URI into a blob and PUTting it is unreliable (empty body /
-        // silent hang), so use expo-file-system's binary upload instead.
-        const uploadRes = await uploadAsync(url, asset.uri, {
-          httpMethod: 'PUT',
-          uploadType: FileSystemUploadType.BINARY_CONTENT,
+        // Step 2: fetch the local file as a blob and PUT directly to S3.
+        // Mirrors the profile-photo upload flow (useProfilePhoto), which works reliably.
+        const fileData = await fetch(asset.uri);
+        const blob = await fileData.blob();
+        console.log('[task attach] blob size:', blob.size, 'type:', file.mimeType, 'uri:', asset.uri);
+        const s3Res = await fetch(url, {
+          method: 'PUT',
+          body: blob,
           headers: { 'Content-Type': file.mimeType },
         });
 
-        if (uploadRes.status < 200 || uploadRes.status >= 300) {
-          throw new Error(`S3 upload failed (${uploadRes.status}): ${uploadRes.body}`);
+        if (!s3Res.ok) {
+          let errBody = '';
+          try { errBody = await s3Res.text(); } catch (_) {}
+          console.error('[task attach] S3 PUT failed', s3Res.status, errBody);
+          throw new Error(`S3 upload failed (${s3Res.status}): ${errBody || '(no body)'}`);
         }
 
+        console.log('[task attach] uploaded OK, key:', key);
         setAttachments((prev) =>
           prev.map((a) => (a.id === fileId ? { ...a, key, uploading: false } : a))
         );
@@ -624,6 +630,7 @@ export default function AddTaskScreen() {
       const uploadedKeys = attachments
         .filter((a) => a.key && !a.error)
         .map((a) => a.key as string);
+      console.log('[task attach] sending attachments:', uploadedKeys, 'of', attachments.length, 'picked');
 
       const taskPayload = {
         careReceiverId: selectedReceiverId,
