@@ -5,8 +5,8 @@ import { F } from '@/lib/fonts';
 import { useAuthStore } from '@/lib/store/authStore';
 import { useCareReceiverDashboardStore } from '@/lib/store/careReceiverDashboardStore';
 import { useCaregiverDashboardStore } from '@/lib/store/caregiverDashboardStore';
-import { taskCache } from '@/lib/utils/taskCache';
 import { storage } from '@/lib/utils/storage';
+import { taskCache } from '@/lib/utils/taskCache';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -26,6 +26,22 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
+
+// ─── Cloudinary (TEST: add-task attachments only) ─────────────────────────────
+// Temporary swap from AWS S3 → Cloudinary to verify attachment uploads work.
+// Fill these in with values from your Cloudinary dashboard:
+//   • CLOUDINARY_CLOUD_NAME: Dashboard → "Cloud name"
+//   • CLOUDINARY_UPLOAD_PRESET: Settings → Upload → "Add upload preset" with
+//     Signing Mode = "Unsigned". Name it e.g. parensure_tasks.
+const CLOUDINARY_CLOUD_NAME = 'dfs540rt8';
+const CLOUDINARY_UPLOAD_PRESET = 'parensure_profiles';
+const CLOUDINARY_UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`;
+
+// cloudinary.config({
+//   cloud_name: 'dfs540rt8',
+//   api_key: '393498944556749',
+//   api_secret: '-mnTD9Y96yxJLY_SESRwp34Gb38', // JWT Secret
+// });
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const CATEGORIES = [
@@ -426,31 +442,25 @@ export default function AddTaskScreen() {
       setAttachments((prev) => [...prev, file]);
 
       try {
-        // Step 1: get presigned S3 PUT URL + key from backend (content-type is signed into URL)
-        const urlRes = await caregiverApi.getTaskUploadUrl(asset.name, file.mimeType);
-        if (!urlRes.success || !urlRes.data) throw new Error('Failed to get upload URL');
+        // ── TEST: upload to Cloudinary instead of S3 ──────────────────────────
+        // Unsigned multipart upload straight from the device. No backend / S3
+        // involved, so this isolates whether the attachment flow itself works.
+        // The Cloudinary secure_url is stored as the attachment "key" — the
+        // backend download endpoint passes full URLs through untouched.
+        const form = new FormData();
+        form.append('file', { uri: asset.uri, name: asset.name, type: file.mimeType } as any);
+        form.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
 
-        const { url, key } = urlRes.data;
+        const cloudRes = await fetch(CLOUDINARY_UPLOAD_URL, { method: 'POST', body: form });
+        const cloudBody = await cloudRes.json().catch(() => null);
 
-        // Step 2: fetch the local file as a blob and PUT directly to S3.
-        // Mirrors the profile-photo upload flow (useProfilePhoto), which works reliably.
-        const fileData = await fetch(asset.uri);
-        const blob = await fileData.blob();
-        console.log('[task attach] blob size:', blob.size, 'type:', file.mimeType, 'uri:', asset.uri);
-        const s3Res = await fetch(url, {
-          method: 'PUT',
-          body: blob,
-          headers: { 'Content-Type': file.mimeType },
-        });
-
-        if (!s3Res.ok) {
-          let errBody = '';
-          try { errBody = await s3Res.text(); } catch (_) {}
-          console.error('[task attach] S3 PUT failed', s3Res.status, errBody);
-          throw new Error(`S3 upload failed (${s3Res.status}): ${errBody || '(no body)'}`);
+        if (!cloudRes.ok || !cloudBody?.secure_url) {
+          console.error('[task attach] Cloudinary upload failed', cloudRes.status, cloudBody);
+          throw new Error(`Cloudinary upload failed (${cloudRes.status}): ${cloudBody?.error?.message || '(no body)'}`);
         }
 
-        console.log('[task attach] uploaded OK, key:', key);
+        const key = cloudBody.secure_url as string;
+        console.log('[task attach] uploaded OK to Cloudinary, url:', key);
         setAttachments((prev) =>
           prev.map((a) => (a.id === fileId ? { ...a, key, uploading: false } : a))
         );

@@ -107,6 +107,25 @@ function inRange(item: TaskItem | AppointmentItem, date: Date): boolean {
   return d >= start && (!end || d <= end);
 }
 
+// Like inRange, but also respects a task's recurrence so a non-recurring task
+// doesn't keep appearing on every day after its scheduled date. Without this a
+// past ONE_TIME task (with no end date) would match today and every future day.
+function taskMatchesDay(task: TaskItem, date: Date): boolean {
+  if (!inRange(task, date)) return false;
+  const freq = task.frequency ?? 'ONE_TIME';
+  if (freq === 'DAILY' || freq === 'CUSTOM') return true;
+
+  const rawStart = task.startDate ?? task.createdAt;
+  const start = rawStart ? new Date(rawStart) : null;
+  if (!start) return true;
+  start.setHours(0, 0, 0, 0);
+  const d = new Date(date); d.setHours(0, 0, 0, 0);
+
+  if (freq === 'WEEKLY') return d.getDay() === start.getDay();
+  // ONE_TIME: only on its scheduled day
+  return d.getTime() === start.getTime();
+}
+
 function groupByTime<T extends { scheduledTimes?: string[] }>(items: T[]): Record<TimeGroup, T[]> {
   const g: Record<TimeGroup, T[]> = { Morning: [], Afternoon: [], Evening: [] };
   for (const item of items) {
@@ -258,7 +277,7 @@ export default function MedicationScreen() {
   // is still relevant to the care receiver (shown as upcoming).
   // Tasks/appointments: respect the date range so the weekly picker is meaningful.
   const meds = tasks.filter(t => t.category === 'MEDICATION' && inRange(t, selectedDate));
-  const nonMeds = tasks.filter(t => t.category !== 'MEDICATION' && inRange(t, selectedDate));
+  const nonMeds = tasks.filter(t => t.category !== 'MEDICATION' && taskMatchesDay(t, selectedDate));
   const appts = appointments.filter(a => inRange(a, selectedDate));
 
   // Don't count future-date completions — those are stale from a previous day's action

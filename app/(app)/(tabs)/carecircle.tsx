@@ -286,6 +286,28 @@ function formatLastSeen(
   return `${days}d ago`;
 }
 
+// A task is "active" when it's happening today or in the future — i.e. not
+// expired. Expired = its end date has passed, or it's a ONE_TIME task whose
+// scheduled day is already behind us.
+function isTaskActive(task: any): boolean {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+
+  if (task.endDate) {
+    const end = new Date(task.endDate); end.setHours(23, 59, 59, 999);
+    if (end < today) return false;
+  }
+
+  const freq = task.frequency ?? 'ONE_TIME';
+  if (freq === 'ONE_TIME') {
+    const rawStart = task.startDate ?? task.createdAt;
+    if (rawStart) {
+      const start = new Date(rawStart); start.setHours(0, 0, 0, 0);
+      if (start < today) return false;
+    }
+  }
+  return true;
+}
+
 const ROLE_LABELS: Record<string, string> = {
   PRIMARY_CAREGIVER: 'Primary Caregiver',
   PROFESSIONAL_CAREGIVER: 'Professional Caregiver',
@@ -397,6 +419,9 @@ function CaregiverCircle() {
   useEffect(() => {
     if (selectedIdx === 0 && hasSelfProfile) fetchSelfData();
   }, [selectedIdx, hasSelfProfile, fetchSelfData]);
+
+  // Only surface present/upcoming tasks — expired ones drop off the summary.
+  const activeSelfTasks = selfTasks.filter(isTaskActive);
 
   const fetchBookings = useCallback(async (force = false) => {
     if (!force && !isStale()) return;
@@ -682,13 +707,13 @@ function CaregiverCircle() {
                   <>
                     <View style={s.selfStatsRow}>
                       <View style={s.selfStat}>
-                        <Text style={s.selfStatValue}>{selfTasks.length}</Text>
+                        <Text style={s.selfStatValue}>{activeSelfTasks.length}</Text>
                         <Text style={s.selfStatLabel}>Tasks</Text>
                       </View>
                       <View style={s.selfStatDivider} />
                       <View style={s.selfStat}>
                         <Text style={s.selfStatValue}>
-                          {selfTasks.filter((t) => t.category === 'MEDICATION').length}
+                          {activeSelfTasks.filter((t) => t.category === 'MEDICATION').length}
                         </Text>
                         <Text style={s.selfStatLabel}>Medications</Text>
                       </View>
@@ -699,9 +724,9 @@ function CaregiverCircle() {
                       </View>
                     </View>
 
-                    {(selfTasks.length > 0 || selfAppointments.length > 0) && (
+                    {(activeSelfTasks.length > 0 || selfAppointments.length > 0) && (
                       <View style={s.selfPreviewList}>
-                        {selfTasks.slice(0, 2).map((t: any) => (
+                        {activeSelfTasks.slice(0, 2).map((t: any) => (
                           <View key={t.id} style={s.selfPreviewRow}>
                             <View style={[s.selfPreviewDot, { backgroundColor: t.category === 'MEDICATION' ? '#8B5CF6' : '#E53935' }]} />
                             <Text style={s.selfPreviewText} numberOfLines={1}>{t.title}</Text>

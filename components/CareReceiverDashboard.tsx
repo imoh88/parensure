@@ -45,6 +45,28 @@ interface AppointmentItem {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+// A task is "active" for the dashboard when it's happening today or in the
+// future — i.e. not expired. A task is expired when its end date has passed,
+// or it's a ONE_TIME task whose scheduled day is already behind us.
+function isTaskActive(task: TaskItem): boolean {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+
+  if (task.endDate) {
+    const end = new Date(task.endDate); end.setHours(23, 59, 59, 999);
+    if (end < today) return false;
+  }
+
+  const freq = task.frequency ?? 'ONE_TIME';
+  if (freq === 'ONE_TIME') {
+    const rawStart = task.startDate ?? task.createdAt;
+    if (rawStart) {
+      const start = new Date(rawStart); start.setHours(0, 0, 0, 0);
+      if (start < today) return false;
+    }
+  }
+  return true;
+}
+
 function calcProfileCompletion(user: any): number {
   const fields = [
     user?.fullName, user?.phone, user?.dateOfBirth, user?.gender,
@@ -277,7 +299,8 @@ function PopulatedDashboard({
   const initial = (user?.fullName ?? 'U').charAt(0).toUpperCase();
 
   const meds = tasks.filter(t => t.category === 'MEDICATION');
-  const nonMedTasks = tasks.filter(t => t.category !== 'MEDICATION');
+  // Only show tasks that are present or upcoming — expired tasks drop off.
+  const nonMedTasks = tasks.filter(t => t.category !== 'MEDICATION' && isTaskActive(t));
   const todayMeds = meds; // already filtered by caller to today
   const takenCount = todayMeds.filter(m => m.status === 'COMPLETED').length;
   const missedCount = todayMeds.filter(m => isMedMissed(m)).length;

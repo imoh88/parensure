@@ -1,5 +1,6 @@
 import ScreenWrapper from '@/components/ui/ScreenWrapper';
 import { caregiverApi } from '@/lib/api/caregiver';
+import { useAuthStore } from '@/lib/store/authStore';
 import { F } from '@/lib/fonts';
 import { appointmentCache } from '@/lib/utils/appointmentCache';
 import { medicationCache } from '@/lib/utils/medicationCache';
@@ -202,8 +203,16 @@ function MiniGauge({ taken, total }: { taken: number; total: number }) {
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function SnapshotScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ careReceiverId?: string; defaultTab?: string }>();
+  const params = useLocalSearchParams<{ careReceiverId?: string; defaultTab?: string; self?: string }>();
   const careReceiverId = params.careReceiverId ?? '';
+
+  // The caregiver's own self-care profile has no CareBooking, so its tasks /
+  // appointments come from the "/mine" endpoints (same as the dashboard) rather
+  // than the per-receiver ones, which are scoped to booked care receivers.
+  // The dashboard passes `self=1` explicitly; fall back to matching the stored
+  // self id in case this screen is reached from elsewhere.
+  const selfCareReceiverId = useAuthStore((st) => st.selfCareReceiverId);
+  const isSelf = params.self === '1' || (!!selfCareReceiverId && careReceiverId === selfCareReceiverId);
 
   const [activeTab, setActiveTab] = useState(parseInt(params.defaultTab ?? '0'));
   const [activeDay, setActiveDay] = useState(TODAY_IDX);
@@ -213,14 +222,16 @@ export default function SnapshotScreen() {
   const [markingId, setMarkingId] = useState<string | null>(null);
 
   const fetchTasks = useCallback(async () => {
-    if (!careReceiverId) return;
+    if (!careReceiverId && !isSelf) return;
     setLoading(true);
     try {
-      const res = await caregiverApi.getTasks(careReceiverId);
+      const res = isSelf
+        ? await caregiverApi.getMyTasks()
+        : await caregiverApi.getTasks(careReceiverId);
       setTasks(res.success && res.data ? res.data : []);
     } catch { setTasks([]); }
     finally { setLoading(false); }
-  }, [careReceiverId]);
+  }, [careReceiverId, isSelf]);
 
   const handleToggleTask = useCallback(async (taskId: string) => {
     setMarkingId(taskId);
@@ -232,14 +243,16 @@ export default function SnapshotScreen() {
   }, []);
 
   const fetchAppointments = useCallback(async () => {
-    if (!careReceiverId) return;
+    if (!careReceiverId && !isSelf) return;
     setLoading(true);
     try {
-      const res = await caregiverApi.getAppointments(careReceiverId);
+      const res = isSelf
+        ? await caregiverApi.getMyAppointments()
+        : await caregiverApi.getAppointments(careReceiverId);
       setAppointments(res.success && res.data ? res.data : []);
     } catch { setAppointments([]); }
     finally { setLoading(false); }
-  }, [careReceiverId]);
+  }, [careReceiverId, isSelf]);
 
   useEffect(() => {
     fetchTasks();
@@ -250,7 +263,7 @@ export default function SnapshotScreen() {
   const renderTabs = () => {
     const selDate = getDateForDayIndex(activeDay);
     const filteredNonMed = tasks.filter((t: any) => t.category !== 'MEDICATION').filter((t) => taskMatchesDay(t, selDate));
-    const medTasks = tasks.filter((t: any) => t.category === 'MEDICATION');
+    const medTasks = tasks.filter((t: any) => t.category === 'MEDICATION').filter((t) => taskMatchesDay(t, selDate));
     return (
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabRow}>
         {TAB_LABELS.map((label, i) => {
@@ -401,7 +414,13 @@ export default function SnapshotScreen() {
 
   // ── MEDICATIONS VIEW ──
   const renderMedicationsView = () => {
-    const medicationTasks = tasks.filter((t: any) => t.category === 'MEDICATION');
+    // Filter to the selected day (respecting frequency + start/end dates) so the
+    // calendar strip is meaningful and expired medications drop off — matching
+    // the dashboard's behaviour.
+    const selectedDate = getDateForDayIndex(activeDay);
+    const medicationTasks = tasks
+      .filter((t: any) => t.category === 'MEDICATION')
+      .filter((t) => taskMatchesDay(t, selectedDate));
     const takenCount = medicationTasks.filter((t: any) => t.status === 'COMPLETED').length;
     const total = medicationTasks.length;
 

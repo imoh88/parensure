@@ -231,6 +231,9 @@ export default function CaregiverDashboard() {
 
   const selectedBooking = displayBookings[selectedIdx] ?? null;
   const selectedCareReceiverId = selectedBooking?.careReceiverId;
+  // The caregiver's own profile has no CareBooking, so its tasks/appointments
+  // come from the "/mine" endpoints rather than the per-receiver ones.
+  const isSelfSelected = selectedBooking?.id === 'self';
 
   const fetchBookings = useCallback(async (force = false) => {
     if (!force && !isStale()) return;
@@ -256,10 +259,12 @@ export default function CaregiverDashboard() {
     finally { setRefreshing(false); }
   }, [setBookings]);
 
-  const fetchAppointments = useCallback(async (careReceiverId: string) => {
+  const fetchAppointments = useCallback(async (careReceiverId: string, isSelf = false) => {
     setLoadingAppointments(true);
     try {
-      const res = await caregiverApi.getAppointments(careReceiverId);
+      const res = isSelf
+        ? await caregiverApi.getMyAppointments()
+        : await caregiverApi.getAppointments(careReceiverId);
       if (res.success && res.data) setAppointments(res.data);
       else setAppointments([]);
     } catch {
@@ -277,8 +282,8 @@ export default function CaregiverDashboard() {
     }
 
     if (selectedCareReceiverId) {
-      fetchTasks(selectedCareReceiverId);
-      fetchAppointments(selectedCareReceiverId);
+      fetchTasks(selectedCareReceiverId, isSelfSelected);
+      fetchAppointments(selectedCareReceiverId, isSelfSelected);
       fetchActivityLog(selectedCareReceiverId);
     }
 
@@ -293,12 +298,14 @@ export default function CaregiverDashboard() {
         })
         .catch(() => { /* silent */ });
     }
-  }, [fetchBookings, isStale, fetchTasks, fetchAppointments, fetchActivityLog, selectedCareReceiverId]));
+  }, [fetchBookings, isStale, fetchTasks, fetchAppointments, fetchActivityLog, selectedCareReceiverId, isSelfSelected]));
 
-  const fetchTasks = useCallback(async (careReceiverId: string) => {
+  const fetchTasks = useCallback(async (careReceiverId: string, isSelf = false) => {
     setLoadingTasks(true);
     try {
-      const res = await caregiverApi.getTasks(careReceiverId);
+      const res = isSelf
+        ? await caregiverApi.getMyTasks()
+        : await caregiverApi.getTasks(careReceiverId);
       if (res.success && res.data) setTasks(res.data);
       else setTasks([]);
     } catch {
@@ -318,14 +325,14 @@ export default function CaregiverDashboard() {
   }, []);
 
   useEffect(() => {
-    if (selectedCareReceiverId) fetchTasks(selectedCareReceiverId);
+    if (selectedCareReceiverId) fetchTasks(selectedCareReceiverId, isSelfSelected);
     else setTasks([]);
-  }, [selectedCareReceiverId, fetchTasks]);
+  }, [selectedCareReceiverId, isSelfSelected, fetchTasks]);
 
   useEffect(() => {
-    if (selectedCareReceiverId) fetchAppointments(selectedCareReceiverId);
+    if (selectedCareReceiverId) fetchAppointments(selectedCareReceiverId, isSelfSelected);
     else setAppointments([]);
-  }, [selectedCareReceiverId, fetchAppointments]);
+  }, [selectedCareReceiverId, isSelfSelected, fetchAppointments]);
 
   const fetchActivityLog = useCallback(async (careReceiverId: string) => {
     setLoadingActivity(true);
@@ -866,6 +873,7 @@ export default function CaregiverDashboard() {
                         careReceiverId: selectedBooking?.careReceiverId ?? '',
                         receiverName: selectedName,
                         defaultTab: String(activeTab),
+                        self: isSelfSelected ? '1' : '0',
                       },
                     })
                   }

@@ -187,6 +187,7 @@ export default function RootLayout() {
       <StatusBar style="dark" backgroundColor="#FFFFFF" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
+        <Stack.Screen name="set-password" />
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(app)" />
       </Stack>
